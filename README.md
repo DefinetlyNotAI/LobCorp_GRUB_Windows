@@ -1,4 +1,4 @@
-# How to set up Lobotomy Corp Themed Windows Bootloader
+# Lobotomy Corp Themed Windows Bootloader
 
 ## Index
 Setup Instructions:
