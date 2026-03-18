@@ -20,19 +20,35 @@ ULONG_PTR gdiplusToken;
 std::atomic<BYTE> overlayAlpha{255};
 std::atomic blinkState{true};
 
-const wchar_t* overlayFiles[] = {
-    L"",
-    L"C:\\Users\\Hp\\.customTrumpets\\overlay\\trumpet1.png",
-    L"C:\\Users\\Hp\\.customTrumpets\\overlay\\trumpet2.png",
-    L"C:\\Users\\Hp\\.customTrumpets\\overlay\\trumpet3.png"
-};
+static std::wstring overlayFilesStorage[4];
+static std::wstring audioFilesStorage[4];
 
-const wchar_t* audioFiles[] = {
-    L"",
-    L"C:\\Users\\Hp\\.customTrumpets\\audio\\trumpet1.wav",
-    L"C:\\Users\\Hp\\.customTrumpets\\audio\\trumpet2.wav",
-    L"C:\\Users\\Hp\\.customTrumpets\\audio\\trumpet3.wav"
-};
+const wchar_t* overlayFiles[4];
+const wchar_t* audioFiles[4];
+
+void initPaths() {
+    wchar_t buffer[MAX_PATH];
+    if (const DWORD ret = GetEnvironmentVariableW(L"USERPROFILE", buffer, MAX_PATH); ret == 0 || ret >= MAX_PATH) {
+        std::wcerr << L"Failed to get USERPROFILE" << std::endl;
+        return;
+    }
+    const std::wstring userProfile(buffer);
+
+    overlayFilesStorage[0] = L"";
+    overlayFilesStorage[1] = userProfile + L"\\.customTrumpets\\overlay\\trumpet1.png";
+    overlayFilesStorage[2] = userProfile + L"\\.customTrumpets\\overlay\\trumpet2.png";
+    overlayFilesStorage[3] = userProfile + L"\\.customTrumpets\\overlay\\trumpet3.png";
+
+    audioFilesStorage[0] = L"";
+    audioFilesStorage[1] = userProfile + L"\\.customTrumpets\\audio\\trumpet1.wav";
+    audioFilesStorage[2] = userProfile + L"\\.customTrumpets\\audio\\trumpet2.wav";
+    audioFilesStorage[3] = userProfile + L"\\.customTrumpets\\audio\\trumpet3.wav";
+
+    for (int i = 0; i < 4; i++) {
+        overlayFiles[i] = overlayFilesStorage[i].c_str();
+        audioFiles[i] = audioFilesStorage[i].c_str();
+    }
+}
 
 std::unique_ptr<Image> currentImage;
 
@@ -165,6 +181,8 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, const UINT msg, const WPARAM wParam, 
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
+    initPaths();
+
     for (int i = 1; i <= 3; i++) {
         if (!fileExists(overlayFiles[i])) { std::wcerr << L"Overlay missing: " << overlayFiles[i] << std::endl; return 1; }
         if (!fileExists(audioFiles[i])) { std::wcerr << L"Audio missing: " << audioFiles[i] << std::endl; return 1; }
