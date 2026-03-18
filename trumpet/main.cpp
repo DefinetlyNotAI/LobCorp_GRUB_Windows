@@ -16,11 +16,11 @@ using namespace Gdiplus;
 using namespace std::chrono_literals;
 
 // ---------------- GLOBALS ----------------
-std::atomic currentTrumpet{0};
-std::atomic lastSeenEnv{-1};
+std::atomic<int> currentTrumpet{0};
 HWND overlayWnd = nullptr;
 ULONG_PTR gdiplusToken;
 std::atomic<BYTE> overlayAlpha{255};
+std::atomic<bool> blinkState{true};
 
 const wchar_t* overlayFiles[] = {
     L"",
@@ -37,38 +37,11 @@ const wchar_t* audioFiles[] = {
 };
 
 std::unique_ptr<Image> currentImage;
-std::atomic blinkState{true};
 
 // ---------------- ENV FUNCTIONS ----------------
-int ReadEnv() {
-    // ReSharper disable once CppLocalVariableMayBeConst
-    wchar_t buf[16]{};
-    DWORD size = sizeof(buf);
-    HKEY hKey{};
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-        if (RegQueryValueExW(hKey, L"DANGER_LEVEL", nullptr, nullptr, reinterpret_cast<LPBYTE>(buf), &size) == ERROR_SUCCESS) {
-            RegCloseKey(hKey);
-            return _wtoi(buf);
-        }
-        RegCloseKey(hKey);
-    }
-    return 0;
-}
-
-void WriteEnv(int val) {
-    val = std::clamp(val, 0, 100);
-    wchar_t buf[16];
-    swprintf(buf, 16, L"%d", val);
-
-    HKEY hKey{};
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS) {
-        RegSetValueExW(hKey, L"DANGER_LEVEL", 0, REG_SZ,
-            reinterpret_cast<BYTE*>(buf), (wcslen(buf)+1)*sizeof(wchar_t));
-        RegCloseKey(hKey);
-    }
-
-    SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, reinterpret_cast<LPARAM>(L"Environment"),
-        SMTO_ABORTIFHUNG, 100, nullptr);
+bool fileExists(const wchar_t* path) {
+    const DWORD attribs = GetFileAttributesW(path);
+    return attribs != INVALID_FILE_ATTRIBUTES && !(attribs & FILE_ATTRIBUTE_DIRECTORY);
 }
 
 // ---------------- AUDIO ----------------
@@ -78,25 +51,6 @@ void Play(int t) {
 }
 
 // ---------------- OVERLAY ----------------
-void CreateOverlay() {
-    WNDCLASSW wc{};
-    wc.lpfnWndProc = DefWindowProcW;
-    wc.hInstance = GetModuleHandle(nullptr);
-    wc.lpszClassName = L"OverlayWnd";
-    RegisterClassW(&wc);
-
-    overlayWnd = CreateWindowExW(
-        WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT,
-        L"OverlayWnd", L"",
-        WS_POPUP,
-        0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN),
-        nullptr, nullptr, wc.hInstance, nullptr
-    );
-
-    SetLayeredWindowAttributes(overlayWnd, 0, 255, LWA_ALPHA);
-    ShowWindow(overlayWnd, SW_SHOW);
-}
-
 void UpdateOverlay() {
     if (!currentImage || currentTrumpet == 0) {
         ShowWindow(overlayWnd, SW_HIDE);
@@ -105,11 +59,11 @@ void UpdateOverlay() {
 
     ShowWindow(overlayWnd, SW_SHOW);
 
+    const int w = GetSystemMetrics(SM_CXSCREEN);
+    const int h = GetSystemMetrics(SM_CYSCREEN);
+
     HDC screenDC = GetDC(nullptr);
     HDC memDC = CreateCompatibleDC(screenDC);
-
-    int w = GetSystemMetrics(SM_CXSCREEN);
-    int h = GetSystemMetrics(SM_CYSCREEN);
 
     BITMAPINFO bminfo{};
     bminfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -120,21 +74,34 @@ void UpdateOverlay() {
     bminfo.bmiHeader.biCompression = BI_RGB;
 
     void* bits = nullptr;
-    // ReSharper disable once CppLocalVariableMayBeConst
     HBITMAP hBmp = CreateDIBSection(memDC, &bminfo, DIB_RGB_COLORS, &bits, nullptr, 0);
-    // ReSharper disable once CppLocalVariableMayBeConst
     HGDIOBJ oldBmp = SelectObject(memDC, hBmp);
 
     Graphics g(memDC);
     g.Clear(Color(0, 0, 0, 0));
-    g.DrawImage(currentImage.get(), 0, 0, w, h);
+
+    if (currentImage) {
+        const auto imgW = static_cast<float>(currentImage->GetWidth());
+        const auto imgH = static_cast<float>(currentImage->GetHeight());
+        const auto screenW = static_cast<float>(w);
+        const auto screenH = static_cast<float>(h);
+
+        const float scale = std::min(screenW / imgW, screenH / imgH);
+
+        const int drawW = static_cast<int>(imgW * scale);
+        const int drawH = static_cast<int>(imgH * scale);
+        const int offsetX = (w - drawW) / 2;
+        const int offsetY = (h - drawH) / 2;
+
+        g.DrawImage(currentImage.get(), offsetX, offsetY, drawW, drawH);
+    }
 
     POINT ptSrc{0,0};
     SIZE sizeWnd{w,h};
     POINT ptDest{0,0};
     BLENDFUNCTION blend{};
     blend.BlendOp = AC_SRC_OVER;
-    blend.SourceConstantAlpha = overlayAlpha;
+    blend.SourceConstantAlpha = overlayAlpha.load();
     blend.AlphaFormat = AC_SRC_ALPHA;
 
     UpdateLayeredWindow(overlayWnd, screenDC, &ptDest, &sizeWnd, memDC, &ptSrc, 0, &blend, ULW_ALPHA);
@@ -146,59 +113,20 @@ void UpdateOverlay() {
 }
 
 // ---------------- TRUMPET ----------------
-void SetTrumpet(const int t) {
-    if (t == currentTrumpet) return;
-
+void SetTrumpet(int t) {
+    if (t == currentTrumpet) t = 0; // toggle off if already active
     currentTrumpet = t;
     Play(t);
 
     currentImage.reset();
-    if (t > 0) currentImage = std::make_unique<Image>(overlayFiles[t]);
-
-    if (t == 0) ShowWindow(overlayWnd, SW_HIDE);
-    else ShowWindow(overlayWnd, SW_SHOW);
+    if (t > 0) {
+        auto img = std::make_unique<Image>(overlayFiles[t]);
+        if (img->GetLastStatus() == Ok) currentImage = std::move(img);
+        else std::wcerr << L"Failed to load overlay: " << overlayFiles[t] << std::endl;
+    }
 
     overlayAlpha = 255;
     UpdateOverlay();
-}
-
-void Evaluate(int v) {
-    v = std::clamp(v, 0, 100);
-
-    int target = 0;
-    if (v > 80) target = 3;
-    else if (v > 50) target = 2;
-    else if (v > 10) target = 1;
-
-    int cur = currentTrumpet;
-    if (target > cur) SetTrumpet(target);
-    else if (v == 0 && cur != 0) SetTrumpet(0);
-}
-
-// ---------------- LOOPS ----------------
-[[noreturn]] void EnvLoop() {
-    while (true) {
-        if (const int v = ReadEnv(); v != lastSeenEnv) {
-            lastSeenEnv = v;
-            Evaluate(v);
-        }
-        std::this_thread::sleep_for(300ms);
-    }
-}
-
-[[noreturn]] void DecayLoop() {
-    std::mt19937 rng(GetTickCount());
-    std::uniform_int_distribution delay(1000,5000);
-    std::uniform_int_distribution coin(0,1);
-
-    while (true) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(delay(rng)));
-        if (coin(rng) == 0) continue;
-
-        const int before = ReadEnv();
-        if (before == 0) continue;
-        if (ReadEnv() == before) WriteEnv(before - 1);
-    }
 }
 
 // ---------------- BLINK LOOP ----------------
@@ -206,7 +134,7 @@ void Evaluate(int v) {
     while (true) {
         if (currentTrumpet > 0) {
             blinkState = !blinkState;
-            overlayAlpha = blinkState ? 255 : 0;
+            overlayAlpha = blinkState ? 255 : 10;
             UpdateOverlay();
         }
         std::this_thread::sleep_for(500ms);
@@ -214,77 +142,65 @@ void Evaluate(int v) {
 }
 
 // ---------------- HOTKEYS ----------------
-// ReSharper disable once CppParameterMayBeConst
-LRESULT CALLBACK WndProc(HWND hwnd, const UINT msg, const WPARAM wParam, const LPARAM lParam) {
+LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_HOTKEY) {
-        const int id = static_cast<int>(wParam);
-        const int cur = ReadEnv();
-
-        if (id == 1) { // F6
-            if (cur >=1 && cur <=49) WriteEnv(0);
-            else WriteEnv(49);
-        }
-        else if (id == 2) { // F7
-            if (cur >=50 && cur <=79) WriteEnv(0);
-            else WriteEnv(79);
-        }
-        else if (id == 3) { // F8
-            if (cur >=80 && cur <=100) WriteEnv(0);
-            else WriteEnv(100);
-        }
+        int id = static_cast<int>(wParam);
+        if (id == 1) SetTrumpet(1); // F6
+        else if (id == 2) SetTrumpet(2); // F7
+        else if (id == 3) SetTrumpet(3); // F8
     }
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
-// ---------------- SAFETY CHECK ----------------
-bool fileExists(const wchar_t* path) {
-    const DWORD attribs = GetFileAttributesW(path);
-    return attribs != INVALID_FILE_ATTRIBUTES && !(attribs & FILE_ATTRIBUTE_DIRECTORY);
+LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_NCHITTEST) return HTTRANSPARENT; // click-through
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
 // ---------------- MAIN ----------------
-// ReSharper disable once CppParameterMayBeConst
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
-    for (int i = 1; i < 4; ++i) {
-        if (!fileExists(overlayFiles[i])) {
-            std::wcerr << L"Overlay file not found: " << overlayFiles[i] << std::endl;
-            return 1;
-        }
+    for (int i = 1; i <= 3; i++) {
+        if (!fileExists(overlayFiles[i])) { std::wcerr << L"Overlay missing: " << overlayFiles[i] << std::endl; return 1; }
+        if (!fileExists(audioFiles[i])) { std::wcerr << L"Audio missing: " << audioFiles[i] << std::endl; return 1; }
     }
 
-    // Check audio files
-    for (int i = 1; i < 4; ++i) {
-        if (!fileExists(audioFiles[i])) {
-            std::wcerr << L"Audio file not found: " << audioFiles[i] << std::endl;
-            return 1;
-        }
-    }
-
-    const GdiplusStartupInput gdiplusStartupInput;
+    GdiplusStartupInput gdiplusStartupInput;
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
 
-    CreateOverlay();
+    // Overlay window
+    WNDCLASSW wcOverlay{};
+    wcOverlay.lpfnWndProc = OverlayWndProc;
+    wcOverlay.hInstance = hInstance;
+    wcOverlay.lpszClassName = L"OverlayWnd";
+    RegisterClassW(&wcOverlay);
 
-    WNDCLASSW wc{};
-    wc.lpfnWndProc = WndProc;
-    wc.hInstance = hInstance;
-    wc.lpszClassName = L"MainWnd";
-    RegisterClassW(&wc);
+    overlayWnd = CreateWindowExW(
+        WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+        L"OverlayWnd", L"",
+        WS_POPUP,
+        0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN),
+        nullptr, nullptr, hInstance, nullptr
+    );
 
-    // ReSharper disable once CppLocalVariableMayBeConst
-    HWND hwnd = CreateWindowExW(0, L"MainWnd", L"", 0,
-                                0,0,0,0, nullptr,nullptr, hInstance, nullptr);
+    SetLayeredWindowAttributes(overlayWnd, 0, 255, LWA_ALPHA);
+    ShowWindow(overlayWnd, SW_SHOW);
 
-    RegisterHotKey(hwnd, 1, 0, VK_F6);
-    RegisterHotKey(hwnd, 2, 0, VK_F7);
-    RegisterHotKey(hwnd, 3, 0, VK_F8);
+    // Main window for hotkeys
+    WNDCLASSW wcMain{};
+    wcMain.lpfnWndProc = MainWndProc;
+    wcMain.hInstance = hInstance;
+    wcMain.lpszClassName = L"MainWnd";
+    RegisterClassW(&wcMain);
 
-    std::thread(EnvLoop).detach();
-    std::thread(DecayLoop).detach();
+    HWND hwndMain = CreateWindowExW(0, L"MainWnd", L"", 0, 0,0,0,0,nullptr,nullptr,hInstance,nullptr);
+    RegisterHotKey(hwndMain, 1, 0, VK_F6);
+    RegisterHotKey(hwndMain, 2, 0, VK_F7);
+    RegisterHotKey(hwndMain, 3, 0, VK_F8);
+
     std::thread(BlinkLoop).detach();
 
     MSG msg{};
-    while (GetMessageW(&msg,nullptr,0,0)) {
+    while (GetMessageW(&msg, nullptr, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
