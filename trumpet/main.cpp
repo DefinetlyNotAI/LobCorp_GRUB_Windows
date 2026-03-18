@@ -22,14 +22,14 @@ ULONG_PTR gdiplusToken;
 
 static std::wstring overlayFilesStorage[4];
 static std::wstring audioFilesStorage[4];
-const wchar_t* overlayFiles[4];
-const wchar_t* audioFiles[4];
+const wchar_t *overlayFiles[4];
+const wchar_t *audioFiles[4];
 
 std::unique_ptr<Image> currentImage;
 
-std::mt19937 rng{ std::random_device{}() };
-std::uniform_int_distribution decayInterval{1000,5000};
-std::uniform_int_distribution decayChance{0,1};
+std::mt19937 rng{std::random_device{}()};
+std::uniform_int_distribution decayInterval{1000, 5000};
+std::uniform_int_distribution decayChance{0, 1};
 
 void initPaths() {
     wchar_t buffer[MAX_PATH];
@@ -55,7 +55,7 @@ void initPaths() {
     }
 }
 
-bool fileExists(const wchar_t* path) {
+bool fileExists(const wchar_t *path) {
     const DWORD attr = GetFileAttributesW(path);
     return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
 }
@@ -71,7 +71,7 @@ int readDangerLevelUser() {
                             nullptr,
                             &size);
     if (res != ERROR_SUCCESS) return 0;
-    std::wstring buf(size/sizeof(wchar_t), L'\0');
+    std::wstring buf(size / sizeof(wchar_t), L'\0');
     res = RegGetValueW(HKEY_CURRENT_USER,
                        L"Environment",
                        L"DANGER_LEVEL",
@@ -99,7 +99,8 @@ void writeDangerLevel(int val) {
     // User env
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS) {
-        RegSetValueExW(hKey, L"DANGER_LEVEL", 0, REG_SZ, reinterpret_cast<const BYTE *>(buf), (DWORD)((wcslen(buf)+1)*sizeof(wchar_t)));
+        RegSetValueExW(hKey, L"DANGER_LEVEL", 0, REG_SZ, reinterpret_cast<const BYTE *>(buf),
+                       (DWORD) ((wcslen(buf) + 1) * sizeof(wchar_t)));
         RegCloseKey(hKey);
     }
 }
@@ -128,9 +129,12 @@ void UpdateOverlay() {
     bi.bmiHeader.biBitCount = 32;
     bi.bmiHeader.biCompression = BI_RGB;
 
-    void* bits = nullptr;
+    void *bits = nullptr;
     HBITMAP bmp = CreateDIBSection(memDC, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
-    if (!bmp) { DeleteDC(memDC); return; }
+    if (!bmp) {
+        DeleteDC(memDC);
+        return;
+    }
 
     HGDIOBJ oldBmp = SelectObject(memDC, bmp);
 
@@ -140,22 +144,22 @@ void UpdateOverlay() {
     g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
     g.SetSmoothingMode(SmoothingModeHighQuality);
 
-    g.Clear(Color(0,0,0,0));
+    g.Clear(Color(0, 0, 0, 0));
 
     if (currentImage) {
         const auto imgW = static_cast<float>(currentImage->GetWidth());
         const auto imgH = static_cast<float>(currentImage->GetHeight());
-        const float scale = std::min(static_cast<float>(w)/imgW, static_cast<float>(h)/imgH);
-        const int drawW = static_cast<int>(imgW*scale);
-        const int drawH = static_cast<int>(imgH*scale);
-        const int offsetX = (w - drawW)/2;
-        const int offsetY = (h - drawH)/2;
+        const float scale = std::min(static_cast<float>(w) / imgW, static_cast<float>(h) / imgH);
+        const int drawW = static_cast<int>(imgW * scale);
+        const int drawH = static_cast<int>(imgH * scale);
+        const int offsetX = (w - drawW) / 2;
+        const int offsetY = (h - drawH) / 2;
         g.DrawImage(currentImage.get(), offsetX, offsetY, drawW, drawH);
     }
 
-    POINT ptSrc{0,0};
-    SIZE size{w,h};
-    POINT ptDest{0,0};
+    POINT ptSrc{0, 0};
+    SIZE size{w, h};
+    POINT ptDest{0, 0};
     BLENDFUNCTION blend{};
     blend.BlendOp = AC_SRC_OVER;
     blend.SourceConstantAlpha = overlayAlpha.load();
@@ -170,7 +174,7 @@ void UpdateOverlay() {
 }
 
 // Set trumpet with hotkey override option
-void SetTrumpet(int t, bool hotkeyOverride=false) {
+void SetTrumpet(int t, bool hotkeyOverride = false) {
     const int prev = currentTrumpet;
     if (hotkeyOverride && t == prev) t = 0; // reset if same trumpet hotkey pressed
     currentTrumpet = t;
@@ -185,7 +189,8 @@ void SetTrumpet(int t, bool hotkeyOverride=false) {
 
     currentImage.reset();
     if (t > 0) {
-        if (auto img = std::make_unique<Image>(overlayFiles[t]); img->GetLastStatus() == Ok) currentImage = std::move(img);
+        if (auto img = std::make_unique<Image>(overlayFiles[t]); img->GetLastStatus() == Ok)
+            currentImage = std::move(img);
         else std::wcerr << L"[ERROR] Failed to load overlay: " << overlayFiles[t] << std::endl;
     }
 
@@ -198,8 +203,9 @@ void SetTrumpet(int t, bool hotkeyOverride=false) {
     while (true) {
         if (currentTrumpet > 0) {
             auto now = clock::now();
-            const double sine = sin(std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count()*0.005);
-            overlayAlpha = static_cast<BYTE>((sine*0.5+0.5)*255);
+            const double sine = sin(
+                std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() * 0.005);
+            overlayAlpha = static_cast<BYTE>((sine * 0.5 + 0.5) * 255);
             UpdateOverlay();
         }
         std::this_thread::sleep_for(16ms);
@@ -211,7 +217,7 @@ void SetTrumpet(int t, bool hotkeyOverride=false) {
         std::this_thread::sleep_for(std::chrono::milliseconds(decayInterval(rng)));
         if (decayChance(rng)) {
             int val = readDangerLevelUser();
-            if (val > 0) writeDangerLevel(val-1);
+            if (val > 0) writeDangerLevel(val - 1);
         }
     }
 }
@@ -219,16 +225,33 @@ void SetTrumpet(int t, bool hotkeyOverride=false) {
 [[noreturn]] void AudioLoop() {
     int lastTrumpet = 0;
     while (true) {
-        int trumpet = currentTrumpet.load();
+        const int trumpet = currentTrumpet.load();
         if (trumpet != lastTrumpet) {
-            // stop any playing sound first
-            PlaySoundW(nullptr, nullptr, 0);
+            // Purge any previous loop before starting a new one.
+            PlaySoundW(nullptr, nullptr, SND_PURGE);
+            std::this_thread::sleep_for(10ms);
 
-            // play new trumpet
             if (trumpet > 0) {
-                auto& path = audioFilesStorage[trumpet]; // ensure std::wstring stays alive
-                if (!PlaySoundW(path.c_str(), nullptr, SND_ASYNC | SND_FILENAME | SND_LOOP | SND_NODEFAULT)) {
-                    std::wcerr << L"[ERROR] Failed to play audio: " << path << std::endl;
+                const auto &path = audioFilesStorage[trumpet];
+                if (path.empty() || !fileExists(path.c_str())) {
+                    std::wcerr << L"[ERROR] Audio file missing/unreadable: " << path << std::endl;
+                } else {
+                    constexpr DWORD primaryFlags = SND_ASYNC | SND_FILENAME | SND_LOOP | SND_SYSTEM;
+                    if (!PlaySoundW(path.c_str(), nullptr, primaryFlags)) {
+                        const DWORD err = GetLastError();
+                        std::wcerr << L"[ERROR] PlaySound primary failed (" << err << L"): " << path << std::endl;
+
+                        // Fallback for systems where SND_SYSTEM is not honored as expected.
+                        constexpr DWORD fallbackFlags = SND_ASYNC | SND_FILENAME | SND_LOOP;
+                        if (!PlaySoundW(path.c_str(), nullptr, fallbackFlags)) {
+                            const DWORD fallbackErr = GetLastError();
+                            std::wcerr << L"[ERROR] PlaySound fallback failed (" << fallbackErr << L"): " << path <<
+                                    std::endl;
+
+                            std::wstring dbg = L"[Trumpet] Audio playback failed for: " + path + L"\n";
+                            OutputDebugStringW(dbg.c_str());
+                        }
+                    }
                 }
             }
 
@@ -264,13 +287,19 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, const UINT msg, const WPARAM wParam, 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     initPaths();
 
-    for (int i=1;i<=3;i++) {
-        if (!fileExists(overlayFiles[i])) { std::wcerr << L"Overlay missing: " << overlayFiles[i] << std::endl; return 1;}
-        if (!fileExists(audioFiles[i])) { std::wcerr << L"Audio missing: " << audioFiles[i] << std::endl; return 1;}
+    for (int i = 1; i <= 3; i++) {
+        if (!fileExists(overlayFiles[i])) {
+            std::wcerr << L"Overlay missing: " << overlayFiles[i] << std::endl;
+            return 1;
+        }
+        if (!fileExists(audioFiles[i])) {
+            std::wcerr << L"Audio missing: " << audioFiles[i] << std::endl;
+            return 1;
+        }
     }
 
     GdiplusStartupInput gdiplusStartupInput;
-    GdiplusStartup(&gdiplusToken,&gdiplusStartupInput,nullptr);
+    GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
 
     WNDCLASSW wcOverlay{};
     wcOverlay.lpfnWndProc = OverlayWndProc;
@@ -281,8 +310,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     overlayWnd = CreateWindowExW(
         WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
         L"OverlayWnd", L"", WS_POPUP,
-        0,0,GetSystemMetrics(SM_CXSCREEN),GetSystemMetrics(SM_CYSCREEN),
-        nullptr,nullptr,hInstance,nullptr
+        0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN),
+        nullptr, nullptr, hInstance, nullptr
     );
     ShowWindow(overlayWnd,SW_SHOW);
 
@@ -292,15 +321,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     wcMain.lpszClassName = L"MainWnd";
     RegisterClassW(&wcMain);
 
-    HWND hwndMain = CreateWindowExW(0,L"MainWnd",L"",0,0,0,0,0,nullptr,nullptr,hInstance,nullptr);
-    RegisterHotKey(hwndMain,1,0,VK_F6);
-    RegisterHotKey(hwndMain,2,0,VK_F7);
-    RegisterHotKey(hwndMain,3,0,VK_F8);
+    HWND hwndMain = CreateWindowExW(0, L"MainWnd", L"", 0, 0, 0, 0, 0, nullptr, nullptr, hInstance, nullptr);
+    RegisterHotKey(hwndMain, 1, 0,VK_F6);
+    RegisterHotKey(hwndMain, 2, 0,VK_F7);
+    RegisterHotKey(hwndMain, 3, 0,VK_F8);
 
     std::thread(BlinkLoop).detach();
     std::thread(DecayLoop).detach();
     std::thread(AudioLoop).detach();
-    for (int i=1;i<=3;i++) std::wcout << L"Audio path " << i << L": " << audioFilesStorage[i] << std::endl;
+    for (int i = 1; i <= 3; i++) std::wcout << L"Audio path " << i << L": " << audioFilesStorage[i] << std::endl;
 
     MSG msg{};
     // ReSharper disable once CppDFAEndlessLoop
@@ -309,12 +338,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
         const int targetTrumpet = trumpetFromDanger(danger);
 
         if (const int current = currentTrumpet.load(); targetTrumpet > current) {
+            // Only upgrade automatically when danger crosses into a higher band.
             SetTrumpet(targetTrumpet);
-        } else if (targetTrumpet == 0 && current > 0) {
+        } else if (danger == 0 && current > 0) {
+            // Sticky mode: keep current trumpet until danger fully reaches zero.
             SetTrumpet(0);
         }
 
-        while (PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)) {
+        while (PeekMessageW(&msg, nullptr, 0, 0,PM_REMOVE)) {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
