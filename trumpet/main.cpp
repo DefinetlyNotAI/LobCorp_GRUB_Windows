@@ -14,11 +14,11 @@
 using namespace Gdiplus;
 using namespace std::chrono_literals;
 
-std::atomic<int> currentTrumpet{0};
+std::atomic currentTrumpet{0};
 HWND overlayWnd = nullptr;
 ULONG_PTR gdiplusToken;
 std::atomic<BYTE> overlayAlpha{255};
-std::atomic<bool> blinkState{true};
+std::atomic blinkState{true};
 
 const wchar_t* overlayFiles[] = {
     L"",
@@ -37,11 +37,11 @@ const wchar_t* audioFiles[] = {
 std::unique_ptr<Image> currentImage;
 
 bool fileExists(const wchar_t* path) {
-    DWORD attr = GetFileAttributesW(path);
+    const DWORD attr = GetFileAttributesW(path);
     return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
 }
 
-void Play(int t) {
+void Play(const int t) {
     if (t == 0) PlaySoundW(nullptr, nullptr, 0);
     else PlaySoundW(audioFiles[t], nullptr, SND_ASYNC | SND_FILENAME | SND_LOOP);
 }
@@ -56,8 +56,8 @@ void UpdateOverlay() {
 
     ShowWindow(overlayWnd, SW_SHOW);
 
-    int w = GetSystemMetrics(SM_CXSCREEN);
-    int h = GetSystemMetrics(SM_CYSCREEN);
+    const int w = GetSystemMetrics(SM_CXSCREEN);
+    const int h = GetSystemMetrics(SM_CYSCREEN);
 
     HDC screenDC = GetDC(nullptr);
     HDC memDC = CreateCompatibleDC(screenDC);
@@ -124,8 +124,7 @@ void SetTrumpet(int t) {
 
     currentImage.reset();
     if (t > 0) {
-        auto img = std::make_unique<Image>(overlayFiles[t]);
-        if (img->GetLastStatus() == Ok) currentImage = std::move(img);
+        if (auto img = std::make_unique<Image>(overlayFiles[t]); img->GetLastStatus() == Ok) currentImage = std::move(img);
         else std::wcerr << L"[ERROR] Failed to load overlay: " << overlayFiles[t] << std::endl;
     }
 
@@ -135,7 +134,7 @@ void SetTrumpet(int t) {
 
 [[noreturn]] void BlinkLoop() {
     using clock = std::chrono::steady_clock;
-    auto startTime = clock::now();
+    const auto startTime = clock::now();
 
     while (true) {
         if (currentTrumpet > 0) {
@@ -151,16 +150,16 @@ void SetTrumpet(int t) {
     }
 }
 
-LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+LRESULT CALLBACK MainWndProc(HWND hwnd, const UINT msg, const WPARAM wParam, const LPARAM lParam) {
     if (msg == WM_HOTKEY) {
-        if (int id = static_cast<int>(wParam); id == 1) SetTrumpet(1);
+        if (const int id = static_cast<int>(wParam); id == 1) SetTrumpet(1);
         else if (id == 2) SetTrumpet(2);
         else if (id == 3) SetTrumpet(3);
     }
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
-LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+LRESULT CALLBACK OverlayWndProc(HWND hwnd, const UINT msg, const WPARAM wParam, const LPARAM lParam) {
     if (msg == WM_NCHITTEST) return HTTRANSPARENT;
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
@@ -171,7 +170,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
         if (!fileExists(audioFiles[i])) { std::wcerr << L"Audio missing: " << audioFiles[i] << std::endl; return 1; }
     }
 
-    GdiplusStartupInput gdiplusStartupInput;
+    const GdiplusStartupInput gdiplusStartupInput;
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
 
     WNDCLASSW wcOverlay{};
