@@ -7,6 +7,7 @@
 #include <memory>
 #include <chrono>
 #include <cwchar>
+#include <iostream>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "gdiplus.lib")
@@ -145,7 +146,7 @@ void UpdateOverlay() {
 }
 
 // ---------------- TRUMPET ----------------
-void SetTrumpet(int t) {
+void SetTrumpet(const int t) {
     if (t == currentTrumpet) return;
 
     currentTrumpet = t;
@@ -235,9 +236,30 @@ LRESULT CALLBACK WndProc(HWND hwnd, const UINT msg, const WPARAM wParam, const L
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
+// ---------------- SAFETY CHECK ----------------
+bool fileExists(const wchar_t* path) {
+    const DWORD attribs = GetFileAttributesW(path);
+    return attribs != INVALID_FILE_ATTRIBUTES && !(attribs & FILE_ATTRIBUTE_DIRECTORY);
+}
+
 // ---------------- MAIN ----------------
 // ReSharper disable once CppParameterMayBeConst
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
+    for (int i = 1; i < 4; ++i) {
+        if (!fileExists(overlayFiles[i])) {
+            std::wcerr << L"Overlay file not found: " << overlayFiles[i] << std::endl;
+            return 1;
+        }
+    }
+
+    // Check audio files
+    for (int i = 1; i < 4; ++i) {
+        if (!fileExists(audioFiles[i])) {
+            std::wcerr << L"Audio file not found: " << audioFiles[i] << std::endl;
+            return 1;
+        }
+    }
+
     const GdiplusStartupInput gdiplusStartupInput;
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
 
