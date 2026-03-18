@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cwchar>
 #include <iostream>
+#include <random>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "gdiplus.lib")
@@ -14,17 +15,43 @@
 using namespace Gdiplus;
 using namespace std::chrono_literals;
 
-std::atomic currentTrumpet{0};
+std::atomic<int> currentTrumpet{0};
 HWND overlayWnd = nullptr;
 ULONG_PTR gdiplusToken;
 std::atomic<BYTE> overlayAlpha{255};
-std::atomic blinkState{true};
 
 static std::wstring overlayFilesStorage[4];
 static std::wstring audioFilesStorage[4];
 
 const wchar_t* overlayFiles[4];
 const wchar_t* audioFiles[4];
+
+std::unique_ptr<Image> currentImage;
+
+std::atomic dangerLevel{0};
+std::mutex audioMutex;
+
+std::random_device rd;
+std::mt19937 gen(rd());
+std::uniform_int_distribution decayInterval(1000, 5000); // 1-5s
+
+void clampDangerLevel() {
+    if (dangerLevel < 0) dangerLevel = 0;
+    if (dangerLevel > 100) dangerLevel = 100;
+}
+
+int getTrumpetFromDanger(int level) {
+    if (level == 0) return 0;
+    if (level >= 20 && level <= 49) return 1;
+    if (level >= 50 && level <= 79) return 2;
+    if (level >= 80 && level <= 100) return 3;
+    return 0;
+}
+
+bool fileExists(const wchar_t* path) {
+    const DWORD attr = GetFileAttributesW(path);
+    return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+}
 
 void initPaths() {
     wchar_t buffer[MAX_PATH];
@@ -50,21 +77,26 @@ void initPaths() {
     }
 }
 
-std::unique_ptr<Image> currentImage;
-
-bool fileExists(const wchar_t* path) {
-    const DWORD attr = GetFileAttributesW(path);
-    return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+void fadeOutAudio() {
+    // simple fade out using volume change
+    for (int vol = 100; vol >= 0; vol -= 5) {
+        waveOutSetVolume(nullptr, vol * 0xFFFF / 100);
+        std::this_thread::sleep_for(10ms);
+    }
+    PlaySoundW(nullptr, nullptr, 0);
 }
 
-void Play(const int t) {
-    if (t == 0) PlaySoundW(nullptr, nullptr, 0);
-    else PlaySoundW(audioFiles[t], nullptr, SND_ASYNC | SND_FILENAME | SND_LOOP);
+void PlayTrumpet(const int t) {
+    std::lock_guard lock(audioMutex);
+    if (t == 0) {
+        fadeOutAudio();
+        return;
+    }
+    PlaySoundW(audioFiles[t], nullptr, SND_ASYNC | SND_FILENAME | SND_LOOP);
 }
 
 void UpdateOverlay() {
     if (!overlayWnd) return;
-
     if (!currentImage || currentTrumpet == 0) {
         ShowWindow(overlayWnd, SW_HIDE);
         return;
@@ -77,7 +109,6 @@ void UpdateOverlay() {
 
     HDC screenDC = GetDC(nullptr);
     HDC memDC = CreateCompatibleDC(screenDC);
-
     if (!memDC) return;
 
     BITMAPINFO bi{};
@@ -102,30 +133,25 @@ void UpdateOverlay() {
 
     g.Clear(Color(0, 0, 0, 0));
 
-    if (currentImage) {
-        const auto imgW = static_cast<float>(currentImage->GetWidth());
-        const auto imgH = static_cast<float>(currentImage->GetHeight());
+    const auto imgW = static_cast<float>(currentImage->GetWidth());
+    const auto imgH = static_cast<float>(currentImage->GetHeight());
+    const float scale = std::min(static_cast<float>(w) / imgW, static_cast<float>(h) / imgH);
+    const int drawW = static_cast<int>(imgW * scale);
+    const int drawH = static_cast<int>(imgH * scale);
+    const int offsetX = (w - drawW) / 2;
+    const int offsetY = (h - drawH) / 2;
 
-        const float scale = std::min(static_cast<float>(w) / imgW, static_cast<float>(h) / imgH);
+    g.DrawImage(currentImage.get(), offsetX, offsetY, drawW, drawH);
 
-        const int drawW = static_cast<int>(imgW * scale);
-        const int drawH = static_cast<int>(imgH * scale);
-        const int offsetX = (w - drawW) / 2;
-        const int offsetY = (h - drawH) / 2;
-
-        g.DrawImage(currentImage.get(), offsetX, offsetY, drawW, drawH);
-    }
-
-    POINT ptSrc{0,0};
-    SIZE size{w,h};
-    POINT ptDest{0,0};
+    POINT ptSrc{ 0,0 };
+    SIZE size{ w,h };
+    POINT ptDest{ 0,0 };
     BLENDFUNCTION blend{};
     blend.BlendOp = AC_SRC_OVER;
     blend.SourceConstantAlpha = overlayAlpha.load();
     blend.AlphaFormat = AC_SRC_ALPHA;
 
-    if (!UpdateLayeredWindow(overlayWnd, screenDC, &ptDest, &size, memDC, &ptSrc, 0, &blend, ULW_ALPHA))
-        std::wcerr << L"[ERROR] UpdateLayeredWindow failed: " << GetLastError() << std::endl;
+    UpdateLayeredWindow(overlayWnd, screenDC, &ptDest, &size, memDC, &ptSrc, 0, &blend, ULW_ALPHA);
 
     SelectObject(memDC, oldBmp);
     DeleteObject(bmp);
@@ -134,16 +160,18 @@ void UpdateOverlay() {
 }
 
 void SetTrumpet(int t) {
-    if (t == currentTrumpet) t = 0;
-    currentTrumpet = t;
-    Play(t);
+    if (t == currentTrumpet) t = 0; // reset if same
 
-    currentImage.reset();
+    currentTrumpet = t;
+
     if (t > 0) {
         if (auto img = std::make_unique<Image>(overlayFiles[t]); img->GetLastStatus() == Ok) currentImage = std::move(img);
         else std::wcerr << L"[ERROR] Failed to load overlay: " << overlayFiles[t] << std::endl;
+    } else {
+        currentImage.reset();
     }
 
+    PlayTrumpet(t);
     overlayAlpha = 255;
     UpdateOverlay();
 }
@@ -156,21 +184,40 @@ void SetTrumpet(int t) {
         if (currentTrumpet > 0) {
             auto now = clock::now();
             const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime).count();
-            const auto msd = static_cast<double>(ms);      // explicit conversion
-            const double sine = sin(msd * 0.005);            // now safe
+            const double sine = sin(ms * 0.005);
             overlayAlpha = static_cast<BYTE>((sine * 0.5 + 0.5) * 255);
-
             UpdateOverlay();
         }
-        std::this_thread::sleep_for(16ms); // ~60 FPS
+        std::this_thread::sleep_for(16ms);
+    }
+}
+
+[[noreturn]] void DecayLoop() {
+    std::uniform_int_distribution chance(0, 1);
+    while (true) {
+        int waitMs = decayInterval(gen);
+        std::this_thread::sleep_for(std::chrono::milliseconds(waitMs));
+        if (chance(gen) == 1) {
+            --dangerLevel;
+            clampDangerLevel();
+        }
+    }
+}
+
+void ReadEnvDanger() {
+    wchar_t buffer[16];
+    if (GetEnvironmentVariableW(L"DANGER_LEVEL", buffer, 16)) {
+        const int val = _wtoi(buffer);
+        dangerLevel = val;
+        clampDangerLevel();
     }
 }
 
 LRESULT CALLBACK MainWndProc(HWND hwnd, const UINT msg, const WPARAM wParam, const LPARAM lParam) {
     if (msg == WM_HOTKEY) {
-        if (const int id = static_cast<int>(wParam); id == 1) SetTrumpet(1);
-        else if (id == 2) SetTrumpet(2);
-        else if (id == 3) SetTrumpet(3);
+        if (wParam == 1) { dangerLevel = 49; clampDangerLevel(); SetTrumpet(1); }
+        else if (wParam == 2) { dangerLevel = 79; clampDangerLevel(); SetTrumpet(2); }
+        else if (wParam == 3) { dangerLevel = 100; clampDangerLevel(); SetTrumpet(3); }
     }
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
@@ -204,7 +251,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
         0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN),
         nullptr, nullptr, hInstance, nullptr
     );
-
     ShowWindow(overlayWnd, SW_SHOW);
 
     WNDCLASSW wcMain{};
@@ -219,11 +265,22 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     RegisterHotKey(hwndMain, 3, 0, VK_F8);
 
     std::thread(BlinkLoop).detach();
+    std::thread(DecayLoop).detach();
 
     MSG msg{};
-    while (GetMessageW(&msg, nullptr, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+    std::atomic running{true};
+
+    while (running) {
+        ReadEnvDanger();
+        if (const int targetTrumpet = getTrumpetFromDanger(dangerLevel); targetTrumpet > currentTrumpet) SetTrumpet(targetTrumpet);
+        else if (currentTrumpet > 0 && dangerLevel == 0) SetTrumpet(0);
+
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) running = false;
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        std::this_thread::sleep_for(50ms);
     }
 
     currentImage.reset();
