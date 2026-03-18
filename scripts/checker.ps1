@@ -1,3 +1,5 @@
+# System Requirement Checker for Windows 11 Installation of GRUB and HackBGRT
+
 # ---- Admin Check ----
 $admin = ([Security.Principal.WindowsPrincipal] `
     [Security.Principal.WindowsIdentity]::GetCurrent()
