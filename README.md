@@ -47,11 +47,11 @@ If you want to know if your system can support this setup, run the following com
 
 ```bash
 powershell -ExecutionPolicy Bypass `
--Command "irm https://raw.githubusercontent.com/DefinetlyNotAI/LobCorp_GRUB_Windows/main/checker.ps1 | iex"
+-Command "irm https://raw.githubusercontent.com/DefinetlyNotAI/LobCorp_GRUB_Windows/main/scripts/checker.ps1 | iex"
 
 ```
 
-> The script is in the GitHub repo, and you can view its code directly [here](https://github.com/DefinetlyNotAI/LobCorp_GRUB_Windows/blob/main/checker.ps1).
+> The script is in the GitHub repo, and you can view its code directly [here](scripts/checker.ps1).
 
 ### Required Files/Software:
 
@@ -66,7 +66,7 @@ powershell -ExecutionPolicy Bypass `
 
 - An image that is 254x127 (note the software will auto rescale if the size is diff, but it is recommended to try and maintain a similar size ratio)
 
-- Custom [`grub.cfg`](https://github.com/DefinetlyNotAI/LobCorp_GRUB_Windows/blob/main/grub.cfg) and [`grubenv`](https://github.com/DefinetlyNotAI/LobCorp_GRUB_Windows/blob/main/grubenv) files to replace the default ones created by the installer.
+- Custom [`grub.cfg`](grub/grub.cfg) and [`grubenv`](grub/grubenv) files to replace the default ones created by the installer.
 
 ### Important Note
 
@@ -100,7 +100,7 @@ the installer should have not produced any errors/issues
 Open the EXE which can be found in `C:\grub2\grub2win.exe`, then close it, this is to make sure all files are correctly setup, 
 however if you see a warning or error, ensure to follow the instructions of the error.
 
-You should have already downloaded the [`grub.cfg`](https://github.com/DefinetlyNotAI/LobCorp_GRUB_Windows/blob/main/grub.cfg) and [`grubenv`](https://github.com/DefinetlyNotAI/LobCorp_GRUB_Windows/blob/main/grubenv) files.
+You should have already downloaded the [`grub.cfg`](grub/grub.cfg) and [`grubenv`](grub/grubenv) files.
 Put both files in `C:\grub2\`, and once you get prompted to replace the files, click accept.
 
 <details>
