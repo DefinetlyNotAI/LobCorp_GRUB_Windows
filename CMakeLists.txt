@@ -10,7 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Source files
 set(SOURCES
         trumpet/main.cpp
-        trumpet/resources.rc
+        trumpet/resources/resources.rc
 )
 
 # Add executable and rename output to Trumpet.exe
