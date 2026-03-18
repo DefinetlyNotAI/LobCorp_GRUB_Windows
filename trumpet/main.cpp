@@ -3,7 +3,6 @@
 #include <gdiplus.h>
 #include <thread>
 #include <atomic>
-#include <random>
 #include <memory>
 #include <chrono>
 #include <cwchar>
@@ -15,7 +14,6 @@
 using namespace Gdiplus;
 using namespace std::chrono_literals;
 
-// ---------------- GLOBALS ----------------
 std::atomic<int> currentTrumpet{0};
 HWND overlayWnd = nullptr;
 ULONG_PTR gdiplusToken;
@@ -38,20 +36,19 @@ const wchar_t* audioFiles[] = {
 
 std::unique_ptr<Image> currentImage;
 
-// ---------------- ENV FUNCTIONS ----------------
 bool fileExists(const wchar_t* path) {
-    const DWORD attribs = GetFileAttributesW(path);
-    return attribs != INVALID_FILE_ATTRIBUTES && !(attribs & FILE_ATTRIBUTE_DIRECTORY);
+    DWORD attr = GetFileAttributesW(path);
+    return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
 }
 
-// ---------------- AUDIO ----------------
 void Play(int t) {
     if (t == 0) PlaySoundW(nullptr, nullptr, 0);
     else PlaySoundW(audioFiles[t], nullptr, SND_ASYNC | SND_FILENAME | SND_LOOP);
 }
 
-// ---------------- OVERLAY ----------------
 void UpdateOverlay() {
+    if (!overlayWnd) return;
+
     if (!currentImage || currentTrumpet == 0) {
         ShowWindow(overlayWnd, SW_HIDE);
         return;
@@ -59,34 +56,41 @@ void UpdateOverlay() {
 
     ShowWindow(overlayWnd, SW_SHOW);
 
-    const int w = GetSystemMetrics(SM_CXSCREEN);
-    const int h = GetSystemMetrics(SM_CYSCREEN);
+    int w = GetSystemMetrics(SM_CXSCREEN);
+    int h = GetSystemMetrics(SM_CYSCREEN);
 
     HDC screenDC = GetDC(nullptr);
     HDC memDC = CreateCompatibleDC(screenDC);
 
-    BITMAPINFO bminfo{};
-    bminfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bminfo.bmiHeader.biWidth = w;
-    bminfo.bmiHeader.biHeight = -h; // top-down
-    bminfo.bmiHeader.biPlanes = 1;
-    bminfo.bmiHeader.biBitCount = 32;
-    bminfo.bmiHeader.biCompression = BI_RGB;
+    if (!memDC) return;
+
+    BITMAPINFO bi{};
+    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bi.bmiHeader.biWidth = w;
+    bi.bmiHeader.biHeight = -h; // top-down
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
 
     void* bits = nullptr;
-    HBITMAP hBmp = CreateDIBSection(memDC, &bminfo, DIB_RGB_COLORS, &bits, nullptr, 0);
-    HGDIOBJ oldBmp = SelectObject(memDC, hBmp);
+    HBITMAP bmp = CreateDIBSection(memDC, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!bmp) { DeleteDC(memDC); return; }
+
+    HGDIOBJ oldBmp = SelectObject(memDC, bmp);
 
     Graphics g(memDC);
+    g.SetCompositingMode(CompositingModeSourceOver);
+    g.SetCompositingQuality(CompositingQualityHighQuality);
+    g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+    g.SetSmoothingMode(SmoothingModeHighQuality);
+
     g.Clear(Color(0, 0, 0, 0));
 
     if (currentImage) {
         const auto imgW = static_cast<float>(currentImage->GetWidth());
         const auto imgH = static_cast<float>(currentImage->GetHeight());
-        const auto screenW = static_cast<float>(w);
-        const auto screenH = static_cast<float>(h);
 
-        const float scale = std::min(screenW / imgW, screenH / imgH);
+        const float scale = std::min(static_cast<float>(w) / imgW, static_cast<float>(h) / imgH);
 
         const int drawW = static_cast<int>(imgW * scale);
         const int drawH = static_cast<int>(imgH * scale);
@@ -97,24 +101,24 @@ void UpdateOverlay() {
     }
 
     POINT ptSrc{0,0};
-    SIZE sizeWnd{w,h};
+    SIZE size{w,h};
     POINT ptDest{0,0};
     BLENDFUNCTION blend{};
     blend.BlendOp = AC_SRC_OVER;
     blend.SourceConstantAlpha = overlayAlpha.load();
     blend.AlphaFormat = AC_SRC_ALPHA;
 
-    UpdateLayeredWindow(overlayWnd, screenDC, &ptDest, &sizeWnd, memDC, &ptSrc, 0, &blend, ULW_ALPHA);
+    if (!UpdateLayeredWindow(overlayWnd, screenDC, &ptDest, &size, memDC, &ptSrc, 0, &blend, ULW_ALPHA))
+        std::wcerr << L"[ERROR] UpdateLayeredWindow failed: " << GetLastError() << std::endl;
 
     SelectObject(memDC, oldBmp);
-    DeleteObject(hBmp);
+    DeleteObject(bmp);
     DeleteDC(memDC);
     ReleaseDC(nullptr, screenDC);
 }
 
-// ---------------- TRUMPET ----------------
 void SetTrumpet(int t) {
-    if (t == currentTrumpet) t = 0; // toggle off if already active
+    if (t == currentTrumpet) t = 0;
     currentTrumpet = t;
     Play(t);
 
@@ -122,42 +126,45 @@ void SetTrumpet(int t) {
     if (t > 0) {
         auto img = std::make_unique<Image>(overlayFiles[t]);
         if (img->GetLastStatus() == Ok) currentImage = std::move(img);
-        else std::wcerr << L"Failed to load overlay: " << overlayFiles[t] << std::endl;
+        else std::wcerr << L"[ERROR] Failed to load overlay: " << overlayFiles[t] << std::endl;
     }
 
     overlayAlpha = 255;
     UpdateOverlay();
 }
 
-// ---------------- BLINK LOOP ----------------
 [[noreturn]] void BlinkLoop() {
+    using clock = std::chrono::steady_clock;
+    auto startTime = clock::now();
+
     while (true) {
         if (currentTrumpet > 0) {
-            blinkState = !blinkState;
-            overlayAlpha = blinkState ? 255 : 10;
+            auto now = clock::now();
+            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime).count();
+            const auto msd = static_cast<double>(ms);      // explicit conversion
+            const double sine = sin(msd * 0.005);            // now safe
+            overlayAlpha = static_cast<BYTE>((sine * 0.5 + 0.5) * 255);
+
             UpdateOverlay();
         }
-        std::this_thread::sleep_for(500ms);
+        std::this_thread::sleep_for(16ms); // ~60 FPS
     }
 }
 
-// ---------------- HOTKEYS ----------------
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_HOTKEY) {
-        int id = static_cast<int>(wParam);
-        if (id == 1) SetTrumpet(1); // F6
-        else if (id == 2) SetTrumpet(2); // F7
-        else if (id == 3) SetTrumpet(3); // F8
+        if (int id = static_cast<int>(wParam); id == 1) SetTrumpet(1);
+        else if (id == 2) SetTrumpet(2);
+        else if (id == 3) SetTrumpet(3);
     }
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
 LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (msg == WM_NCHITTEST) return HTTRANSPARENT; // click-through
+    if (msg == WM_NCHITTEST) return HTTRANSPARENT;
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
-// ---------------- MAIN ----------------
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     for (int i = 1; i <= 3; i++) {
         if (!fileExists(overlayFiles[i])) { std::wcerr << L"Overlay missing: " << overlayFiles[i] << std::endl; return 1; }
@@ -167,7 +174,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     GdiplusStartupInput gdiplusStartupInput;
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
 
-    // Overlay window
     WNDCLASSW wcOverlay{};
     wcOverlay.lpfnWndProc = OverlayWndProc;
     wcOverlay.hInstance = hInstance;
@@ -182,17 +188,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
         nullptr, nullptr, hInstance, nullptr
     );
 
-    SetLayeredWindowAttributes(overlayWnd, 0, 255, LWA_ALPHA);
     ShowWindow(overlayWnd, SW_SHOW);
 
-    // Main window for hotkeys
     WNDCLASSW wcMain{};
     wcMain.lpfnWndProc = MainWndProc;
     wcMain.hInstance = hInstance;
     wcMain.lpszClassName = L"MainWnd";
     RegisterClassW(&wcMain);
 
-    HWND hwndMain = CreateWindowExW(0, L"MainWnd", L"", 0, 0,0,0,0,nullptr,nullptr,hInstance,nullptr);
+    HWND hwndMain = CreateWindowExW(0, L"MainWnd", L"", 0,0,0,0,0,nullptr,nullptr,hInstance,nullptr);
     RegisterHotKey(hwndMain, 1, 0, VK_F6);
     RegisterHotKey(hwndMain, 2, 0, VK_F7);
     RegisterHotKey(hwndMain, 3, 0, VK_F8);
