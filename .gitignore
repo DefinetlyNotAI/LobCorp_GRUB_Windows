@@ -1,0 +1,59 @@
+# ------------------
+# CMake build folders
+# ------------------
+/build/
+/CMakeFiles/
+/CMakeCache.txt
+cmake_install.cmake
+Makefile
+cmake-build-debug/
+
+# ------------------
+# Windows executable and object files
+# ------------------
+*.exe
+*.dll
+*.lib
+*.obj
+*.o
+*.a
+*.pch
+*.pdb
+
+# ------------------
+# Visual Studio / IDE files (if anyone opens in VS)
+# ------------------
+*.vcxproj*
+*.sln
+*.suo
+*.user
+*.ipch
+*.opensdf
+*.sdf
+
+# ------------------
+# Resource compiler output
+# ------------------
+*.res
+*.manifest
+
+# ------------------
+# Temporary files
+# ------------------
+*.log
+*.tmp
+*.temp
+*.swp
+*.bak
+*.backup
+
+# ------------------
+# Mac / Linux system files
+# ------------------
+.DS_Store
+Thumbs.db
+
+# ------------------
+# IDE
+# ------------------
+.idea
