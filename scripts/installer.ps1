@@ -187,8 +187,18 @@ Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 
 # BackgroundWorker to keep UI responsive
 $worker = New-Object System.ComponentModel.BackgroundWorker
 $worker.WorkerReportsProgress = $true
-$worker.DoWork += { Install-Trumpet }
-$worker.RunWorkerCompleted += { $btnInstall.Enabled = $true }
+
+# Register DoWork event
+Register-ObjectEvent -InputObject $worker -EventName DoWork -Action {
+    Install-Trumpet
+}
+
+# Register RunWorkerCompleted event
+Register-ObjectEvent -InputObject $worker -EventName RunWorkerCompleted -Action {
+    $btnInstall.Enabled = $true
+}
+
+# Button click triggers the worker
 $btnInstall.Add_Click({
     $btnInstall.Enabled = $false
     $worker.RunWorkerAsync()
