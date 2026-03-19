@@ -155,6 +155,8 @@ First time only (Init Release build):
 cmake -S . -B cmake-build-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
 ```
 
+> Do double-check you see a build/ folder!
+
 Compile command (after initial config):
 ```powershell
 cmake --build cmake-build-release --target Trumpet -- -j 18
@@ -166,8 +168,12 @@ Then run (after putting `trumpet/.customTrumpets` in place `%USERPROFILE%`):
 .\build\Trumpet.exe
 ```
 
-> Note this also creates the uninstaller.exe as well as installer.exe which can be sent to users for easier installation 
-> and uninstallation.
+You can also create the uninstaller THEN installer scripts:
+
+```powershell
+cmake --build cmake-build-release --target TrumpetUninstaller -- -j 18
+cmake --build cmake-build-release --target Installer -- -j 18
+```
 
 ## 7) Operational checklist
 
