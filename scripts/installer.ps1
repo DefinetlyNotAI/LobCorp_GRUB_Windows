@@ -1,4 +1,4 @@
-# Trumpet Installer - Enterprise Grade with App Registry Uninstall & Responsive UI
+# Trumpet Installer - Enterprise Grade Responsive UI
 
 # Require Admin
 $currentUser = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -32,38 +32,6 @@ $Urls = @{
     'Zip'             = 'https://github.com/DefinetlyNotAI/LobCorp_GRUB_Windows/releases/download/1.0.0-trumpet/Trumpets.media.zip'
 }
 
-# Form UI
-$form = New-Object System.Windows.Forms.Form
-$form.Text = 'Trumpet Installer'
-$form.Size = New-Object System.Drawing.Size(500, 300)
-$form.StartPosition = 'CenterScreen'
-
-$lbl = New-Object System.Windows.Forms.Label
-$lbl.Text = 'Install Trumpet'
-$lbl.Font = New-Object System.Drawing.Font('Segoe UI', 16, [System.Drawing.FontStyle]::Bold)
-$lbl.AutoSize = $true
-$lbl.Location = New-Object System.Drawing.Point(150, 20)
-$form.Controls.Add($lbl)
-
-$chkStartup = New-Object System.Windows.Forms.CheckBox
-$chkStartup.Text = 'Run Trumpet on Windows startup'
-$chkStartup.AutoSize = $true
-$chkStartup.Location = New-Object System.Drawing.Point(150, 150)
-$form.Controls.Add($chkStartup)
-
-$progress = New-Object System.Windows.Forms.ProgressBar
-$progress.Location = New-Object System.Drawing.Point(50, 200)
-$progress.Size = New-Object System.Drawing.Size(400, 20)
-$progress.Minimum = 0
-$progress.Maximum = 100
-$form.Controls.Add($progress)
-
-$btnInstall = New-Object System.Windows.Forms.Button
-$btnInstall.Text = 'Install'
-$btnInstall.Location = New-Object System.Drawing.Point(200, 230)
-$btnInstall.Size = New-Object System.Drawing.Size(100, 30)
-$form.Controls.Add($btnInstall)
-
 # Logging helper
 function Log($msg) {
     Write-Host "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $msg
@@ -78,8 +46,8 @@ function Close-TrumpetIfRunning {
     }
 }
 
-# Synchronous download with optional progress weight
-function DownloadFile($url, $dest, [int]$weight=0) {
+# Synchronous download
+function DownloadFile($url, $dest, [int]$weight=0, [ref]$progressVal) {
     $sizeMB = 0
     try {
         $req = [System.Net.WebRequest]::Create($url)
@@ -91,19 +59,17 @@ function DownloadFile($url, $dest, [int]$weight=0) {
     } catch { $total = 0 }
 
     if ($sizeMB -gt 0) { Log "Downloading $url ($sizeMB MB) -> $dest" } else { Log "Downloading $url -> $dest" }
-
     Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing -ErrorAction Stop
     Log "Downloaded $dest"
 
     if ($weight -gt 0) {
-        $progress.Value += $weight
-        if ($progress.Value -gt 100) { $progress.Value = 100 }
-        $form.Refresh()
+        $progressVal.Value += $weight
+        if ($progressVal.Value -gt 100) { $progressVal.Value = 100 }
     }
 }
 
-# Install function
-function Install-Trumpet {
+# Install logic
+function Install-Trumpet($progressVal) {
     Close-TrumpetIfRunning
     $created = @()
     try {
@@ -119,17 +85,16 @@ function Install-Trumpet {
         foreach ($f in $files) {
             $dest = Join-Path $ProgramDir $f
             if (Test-Path $dest) { Log "$f exists, overwriting..." }
-            DownloadFile $Urls[$f] $dest $fileWeight
+            DownloadFile $Urls[$f] $dest $fileWeight ([ref]$progressVal)
             $created += $dest
         }
 
         # Download and extract ZIP (30%)
-        DownloadFile $Urls['Zip'] $ZipFile 30
+        DownloadFile $Urls['Zip'] $ZipFile 30 ([ref]$progressVal)
         Log "Extracting ZIP..."
         Expand-Archive -Path $ZipFile -DestinationPath $UserDir -Force
         Remove-Item $ZipFile -Force -ErrorAction SilentlyContinue
-        $progress.Value = 90
-        $form.Refresh()
+        $progressVal = 90
         Log "Extraction complete"
 
         # Setup startup (5%)
@@ -171,63 +136,68 @@ Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 
         Set-ItemProperty -Path $uninstallReg -Name "NoRepair" -Value 1
         Log "Registered uninstall in App registry"
 
-        $progress.Value = 100
+        $progressVal = 100
         [System.Windows.Forms.MessageBox]::Show("Installation complete.`nUninstaller: $UninstallFile",'Install Complete')
         Log "Installation completed successfully"
 
     } catch {
         Log "Installation failed: $_"
-        # rollback
         foreach ($f in $created) { if (Test-Path $f) { Remove-Item $f -Force -ErrorAction SilentlyContinue } }
         if (Test-Path $ZipFile) { Remove-Item $ZipFile -Force -ErrorAction SilentlyContinue }
         [System.Windows.Forms.MessageBox]::Show("Installation failed: $_",'Error')
     }
 }
 
-# BackgroundWorker to keep UI responsive
-$worker = New-Object System.ComponentModel.BackgroundWorker
-$worker.WorkerReportsProgress = $true
+# Form UI elements
+$form = New-Object Windows.Forms.Form
+$form.Text = 'Trumpet Installer'
+$form.Size = New-Object Drawing.Size(500,300)
+$form.StartPosition = 'CenterScreen'
 
-# Register DoWork event
-Register-ObjectEvent -InputObject $worker -EventName DoWork -Action {
-    Install-Trumpet
-}
+$lbl = New-Object Windows.Forms.Label
+$lbl.Text = 'Install Trumpet'
+$lbl.Font = New-Object Drawing.Font('Segoe UI',16,[Drawing.FontStyle]::Bold)
+$lbl.AutoSize = $true
+$lbl.Location = New-Object Drawing.Point(150,20)
+$form.Controls.Add($lbl)
 
-# Register RunWorkerCompleted event
-Register-ObjectEvent -InputObject $worker -EventName RunWorkerCompleted -Action {
-    $btnInstall.Enabled = $true
-}
+$chkStartup = New-Object Windows.Forms.CheckBox
+$chkStartup.Text = 'Run Trumpet on Windows startup'
+$chkStartup.AutoSize = $true
+$chkStartup.Location = New-Object Drawing.Point(150,150)
+$form.Controls.Add($chkStartup)
 
-# Button click triggers the worker
+$progress = New-Object Windows.Forms.ProgressBar
+$progress.Location = New-Object Drawing.Point(50,200)
+$progress.Size = New-Object Drawing.Size(400,20)
+$progress.Minimum = 0
+$progress.Maximum = 100
+$form.Controls.Add($progress)
+
+$btnInstall = New-Object Windows.Forms.Button
+$btnInstall.Text = 'Install'
+$btnInstall.Location = New-Object Drawing.Point(200,230)
+$btnInstall.Size = New-Object Drawing.Size(100,30)
+$form.Controls.Add($btnInstall)
+
+# Shared variable for progress
+$script:ProgressValue = 0
+
+# Timer to update progress bar
+$timer = New-Object Windows.Forms.Timer
+$timer.Interval = 200
+$timer.Add_Tick({
+    $progress.Value = $script:ProgressValue
+})
+$timer.Start()
+
+# Button click
 $btnInstall.Add_Click({
     $btnInstall.Enabled = $false
-
-    # Run installation in a new runspace to avoid freezing the UI
-    $runspace = [runspacefactory]::CreateRunspace()
-    $runspace.ApartmentState = "STA"
-    $runspace.ThreadOptions = "ReuseThread"
-    $runspace.Open()
-    $ps = [powershell]::Create()
-    $ps.Runspace = $runspace
-
-    $ps.AddScript({ Install-Trumpet })
-
-    # Start async execution
-    $asyncResult = $ps.BeginInvoke()
-
-    # Poll for completion without freezing UI
-    $timer = New-Object System.Windows.Forms.Timer
-    $timer.Interval = 200
-    $timer.Add_Tick({
-        if ($asyncResult.IsCompleted) {
-            $timer.Stop()
-            $btnInstall.Enabled = $true
-            $ps.EndInvoke($asyncResult)
-            $ps.Dispose()
-            $runspace.Close()
-        }
-    })
-    $timer.Start()
+    Start-Job -ScriptBlock {
+        param($progRef)
+        Install-Trumpet ([ref]$progRef)
+    } -ArgumentList ([ref]$script:ProgressValue) | Out-Null
 })
 
 $form.Topmost = $true
