@@ -201,7 +201,33 @@ Register-ObjectEvent -InputObject $worker -EventName RunWorkerCompleted -Action 
 # Button click triggers the worker
 $btnInstall.Add_Click({
     $btnInstall.Enabled = $false
-    $worker.RunWorkerAsync()
+
+    # Run installation in a new runspace to avoid freezing the UI
+    $runspace = [runspacefactory]::CreateRunspace()
+    $runspace.ApartmentState = "STA"
+    $runspace.ThreadOptions = "ReuseThread"
+    $runspace.Open()
+    $ps = [powershell]::Create()
+    $ps.Runspace = $runspace
+
+    $ps.AddScript({ Install-Trumpet })
+
+    # Start async execution
+    $asyncResult = $ps.BeginInvoke()
+
+    # Poll for completion without freezing UI
+    $timer = New-Object System.Windows.Forms.Timer
+    $timer.Interval = 200
+    $timer.Add_Tick({
+        if ($asyncResult.IsCompleted) {
+            $timer.Stop()
+            $btnInstall.Enabled = $true
+            $ps.EndInvoke($asyncResult)
+            $ps.Dispose()
+            $runspace.Close()
+        }
+    })
+    $timer.Start()
 })
 
 $form.Topmost = $true
