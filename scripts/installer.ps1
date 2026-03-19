@@ -1,4 +1,4 @@
-# Trumpet Installer - Enterprise Grade with App Registry Uninstall
+# Trumpet Installer - Enterprise Grade with App Registry Uninstall & Responsive UI
 
 # Require Admin
 $currentUser = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -66,7 +66,7 @@ $form.Controls.Add($btnInstall)
 
 # Logging helper
 function Log($msg) {
-    Write-Host ( "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $msg )
+    Write-Host "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $msg
 }
 
 # Close running Trumpet
@@ -78,7 +78,7 @@ function Close-TrumpetIfRunning {
     }
 }
 
-# Synchronous download with progress (WebClient fallback for simplicity)
+# Synchronous download with optional progress weight
 function DownloadFile($url, $dest, [int]$weight=0) {
     $sizeMB = 0
     try {
@@ -140,7 +140,7 @@ function Install-Trumpet {
             }
         }
 
-        # Create uninstaller script (5%)
+        # Create uninstaller (5%)
         $UninstallFile = Join-Path $ProgramDir "uninstall-trumpet.ps1"
         $uninstallScript = @"
 Add-Type -AssemblyName System.Windows.Forms
@@ -174,8 +174,8 @@ Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 
         $progress.Value = 100
         [System.Windows.Forms.MessageBox]::Show("Installation complete.`nUninstaller: $UninstallFile",'Install Complete')
         Log "Installation completed successfully"
-    }
-    catch {
+
+    } catch {
         Log "Installation failed: $_"
         # rollback
         foreach ($f in $created) { if (Test-Path $f) { Remove-Item $f -Force -ErrorAction SilentlyContinue } }
@@ -184,11 +184,14 @@ Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 
     }
 }
 
-# Button click
+# BackgroundWorker to keep UI responsive
+$worker = New-Object System.ComponentModel.BackgroundWorker
+$worker.WorkerReportsProgress = $true
+$worker.DoWork += { Install-Trumpet }
+$worker.RunWorkerCompleted += { $btnInstall.Enabled = $true }
 $btnInstall.Add_Click({
     $btnInstall.Enabled = $false
-    Install-Trumpet
-    $btnInstall.Enabled = $true
+    $worker.RunWorkerAsync()
 })
 
 $form.Topmost = $true
