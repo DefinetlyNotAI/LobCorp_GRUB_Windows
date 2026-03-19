@@ -153,18 +153,8 @@ Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 
 # Run install in background to avoid UI freeze
 $btnInstall.Add_Click({
     $btnInstall.Enabled = $false
-
-    $job = Start-Job -ScriptBlock ${function:Install-Trumpet}
-
-    Register-ObjectEvent -InputObject $job -EventName StateChanged -Action {
-        if ($job.State -eq 'Completed' -or $job.State -eq 'Failed') {
-            $form.Invoke([action]{
-                $btnInstall.Enabled = $true
-            })
-            Unregister-Event -SourceIdentifier $event.SourceIdentifier
-            Remove-Job $job
-        }
-    } | Out-Null
+    Install-Trumpet
+    $btnInstall.Enabled = $true
 })
 
 $form.Topmost = $true
