@@ -1,19 +1,19 @@
-# Trumpet CLI Installer - Enterprise Grade
-# Requires Admin
+# Trumpet CLI Installer - Enterprise Grade (FINAL)
 
+# Require Admin
 $currentUser = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $currentUser.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "This installer must be run as administrator."
+    Write-Host "Run as Administrator." -ForegroundColor Red
     exit 1
 }
 
-# Force TLS1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # Paths
 $ProgramDir = "C:\Program Files\Trumpet"
 $UserDir    = "$env:USERPROFILE"
 $ZipFile    = Join-Path $env:TEMP "Trumpets.media.zip"
+$UninstallEXE = Join-Path $ProgramDir "UninstallTrumpet.exe"
 
 # URLs
 $Urls = @{
@@ -25,61 +25,56 @@ $Urls = @{
 
 # Logging
 function Log($msg) {
-    $time = Get-Date -Format 'HH:mm:ss'
-    Write-Host "[$time] $msg"
+    Write-Host ( "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $msg )
 }
 
-# Console progress bar
+# Progress bar
 function ProgressBar($percent) {
-    $width = 50
+    $width = 40
     $filled = [int]($width * ($percent/100))
-    $empty = $width - $filled
-    $bar = ('#'* $filled) + ('-'* $empty)
+    $bar = ('#'*$filled) + ('-'*($width-$filled))
     Write-Host -NoNewline "`r[$bar] $([math]::Round($percent,1))%"
 }
 
-# Close running Trumpet
+# Close running process
 function Close-TrumpetIfRunning {
     $proc = Get-Process -Name Trumpet -ErrorAction SilentlyContinue
     if ($proc) {
-        Log "Trumpet is running, closing..."
+        Log "Closing running Trumpet..."
         $proc | Stop-Process -Force
     }
 }
 
-# Synchronous download with manual progress
+# Download with real progress
 function DownloadFile($url, $dest) {
     try {
-        $req = [System.Net.WebRequest]::Create($url)
-        $req.Method = "HEAD"
-        $resp = $req.GetResponse()
-        $totalBytes = [int64]$resp.Headers["Content-Length"]
+        $head = [System.Net.WebRequest]::Create($url)
+        $head.Method = "HEAD"
+        $resp = $head.GetResponse()
+        $total = [int64]$resp.Headers["Content-Length"]
         $resp.Close()
-    } catch {
-        $totalBytes = 0
-    }
+    } catch { $total = 0 }
 
-    if ($totalBytes -gt 0) {
-        $sizeMB = [math]::Round($totalBytes / 1MB, 2)
-        Log "Downloading $url ($sizeMB MB) -> $dest"
+    if ($total -gt 0) {
+        Log "Downloading $url ($([math]::Round($total/1MB,2)) MB)"
     } else {
-        Log "Downloading $url -> $dest"
+        Log "Downloading $url"
     }
 
     $req = [System.Net.WebRequest]::Create($url)
     $resp = $req.GetResponse()
     $stream = $resp.GetResponseStream()
-    $fs = [System.IO.File]::Open($dest, [System.IO.FileMode]::Create)
+    $fs = [System.IO.File]::Open($dest,[System.IO.FileMode]::Create)
 
     $buffer = New-Object byte[] 8192
     $read = 0
-    $bytesRead = 0
+    $done = 0
+
     while (($read = $stream.Read($buffer,0,$buffer.Length)) -gt 0) {
         $fs.Write($buffer,0,$read)
-        $bytesRead += $read
-        if ($totalBytes -gt 0) {
-            $percent = ($bytesRead / $totalBytes) * 100
-            ProgressBar $percent
+        $done += $read
+        if ($total -gt 0) {
+            ProgressBar (($done / $total) * 100)
         }
     }
 
@@ -87,86 +82,96 @@ function DownloadFile($url, $dest) {
     $stream.Close()
     $resp.Close()
 
-    if ($totalBytes -gt 0) { ProgressBar 100; Write-Host "" }
-    Log "Downloaded $dest"
+    if ($total -gt 0) { ProgressBar 100; Write-Host "" }
+    Log "Saved -> $dest"
 }
 
-# Install Trumpet
+# Create native EXE uninstaller
+function Create-Uninstaller {
+    $code = @"
+using System;
+using System.Diagnostics;
+using System.IO;
+using Microsoft.Win32;
+using System.Windows.Forms;
+
+class Uninstall {
+    [STAThread]
+    static void Main() {
+        try {
+            foreach (var p in Process.GetProcessesByName("Trumpet")) { p.Kill(); }
+
+            string prog = @"$ProgramDir";
+            if (Directory.Exists(prog)) Directory.Delete(prog, true);
+
+            string media = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".customTrumpets");
+            if (Directory.Exists(media)) Directory.Delete(media, true);
+
+            var run = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
+            if (run != null) run.DeleteValue("Trumpet", false);
+
+            var uninst = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall", true);
+            if (uninst != null) uninst.DeleteSubKeyTree("Trumpet", false);
+
+            MessageBox.Show("Trumpet removed.", "Done");
+        } catch (Exception ex) {
+            MessageBox.Show(ex.Message, "Error");
+        }
+    }
+}
+"@
+
+    Add-Type -TypeDefinition $code -Language CSharp -OutputAssembly $UninstallEXE -OutputType WindowsApplication
+    Log "Uninstaller EXE created"
+}
+
+# Install
 function Install-Trumpet {
     Close-TrumpetIfRunning
-    $created = @()
 
-    try {
-        if (!(Test-Path $ProgramDir)) {
-            New-Item -ItemType Directory -Path $ProgramDir -Force | Out-Null
-            Log "Created directory $ProgramDir"
-        }
-
-        # Download main files (Trumpet.exe, LICENSE, Info.md)
-        $files = @('Trumpet.exe','LICENSE','Trumpet Info.md')
-        foreach ($f in $files) {
-            $dest = Join-Path $ProgramDir $f
-            if (Test-Path $dest) { Log "$f exists, overwriting..." }
-            DownloadFile $Urls[$f] $dest
-            $created += $dest
-        }
-
-        # Download and extract ZIP
-        DownloadFile $Urls['Zip'] $ZipFile
-        Log "Extracting ZIP..."
-        Expand-Archive -Path $ZipFile -DestinationPath $UserDir -Force
-        Remove-Item $ZipFile -Force -ErrorAction SilentlyContinue
-        Log "Extraction complete"
-
-        # Setup startup
-        $startupChoice = Read-Host "Do you want Trumpet to run on Windows startup? (Y/N)"
-        if ($startupChoice -match '^[Yy]$') {
-            if (!(Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Trumpet' -ErrorAction SilentlyContinue)) {
-                New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "Trumpet" -Value "`"$ProgramDir\Trumpet.exe`"" -PropertyType String -Force | Out-Null
-                Log "Added Trumpet to startup"
-            }
-        }
-
-        # Create uninstaller script
-        $UninstallFile = Join-Path $ProgramDir "uninstall-trumpet.ps1"
-        $uninstallScript = @"
-Add-Type -AssemblyName System.Windows.Forms
-function Close-TrumpetIfRunning {
-    \$proc = Get-Process -Name Trumpet -ErrorAction SilentlyContinue
-    if (\$proc) { \$proc | Stop-Process -Force }
-}
-\$ProgramDir = '$ProgramDir'
-\$UserDir = '$UserDir'
-Close-TrumpetIfRunning
-if (Test-Path \$ProgramDir) { Remove-Item -Path \$ProgramDir -Recurse -Force -ErrorAction SilentlyContinue }
-if (Test-Path "`$UserDir\.customTrumpets") { Remove-Item -Path "`$UserDir\.customTrumpets" -Recurse -Force -ErrorAction SilentlyContinue }
-Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Trumpet' -ErrorAction SilentlyContinue
-[System.Windows.Forms.MessageBox]::Show('Trumpet uninstalled successfully.','Uninstall Complete')
-"@
-        $uninstallScript | Out-File -FilePath $UninstallFile -Encoding UTF8 -Force
-        Log "Uninstaller created at $UninstallFile"
-
-        # Register uninstall in App Registry
-        $uninstallReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Trumpet"
-        New-Item -Path $uninstallReg -Force | Out-Null
-        Set-ItemProperty -Path $uninstallReg -Name "DisplayName" -Value "Trumpet"
-        Set-ItemProperty -Path $uninstallReg -Name "UninstallString" -Value "`"$UninstallFile`""
-        Set-ItemProperty -Path $uninstallReg -Name "Publisher" -Value "LobCorp"
-        Set-ItemProperty -Path $uninstallReg -Name "DisplayVersion" -Value "1.0.0"
-        Set-ItemProperty -Path $uninstallReg -Name "EstimatedSize" -Value 5KB
-        Set-ItemProperty -Path $uninstallReg -Name "NoModify" -Value 1
-        Set-ItemProperty -Path $uninstallReg -Name "NoRepair" -Value 1
-        Log "Registered uninstall in App registry"
-
-        Log "Installation completed successfully!"
+    if (!(Test-Path $ProgramDir)) {
+        New-Item -ItemType Directory -Path $ProgramDir | Out-Null
+        Log "Created $ProgramDir"
     }
-    catch {
-        Log "Installation failed: $_"
-        foreach ($f in $created) { if (Test-Path $f) { Remove-Item $f -Force -ErrorAction SilentlyContinue } }
-        if (Test-Path $ZipFile) { Remove-Item $ZipFile -Force -ErrorAction SilentlyContinue }
-        Log "Rollback complete."
+
+    foreach ($f in @('Trumpet.exe','LICENSE','Trumpet Info.md')) {
+        $dest = Join-Path $ProgramDir $f
+        if (Test-Path $dest) { Log "$f exists, overwriting..." }
+        DownloadFile $Urls[$f] $dest
     }
+
+    DownloadFile $Urls['Zip'] $ZipFile
+    Log "Extracting..."
+    Expand-Archive $ZipFile -DestinationPath $UserDir -Force
+    Remove-Item $ZipFile -Force
+    Log "Media ready"
+
+    # Startup prompt
+    $ans = Read-Host "Run on startup? (Y/N)"
+    if ($ans -match '^[Yy]') {
+        New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" `
+            -Name "Trumpet" `
+            -Value "`"$ProgramDir\Trumpet.exe`"" `
+            -Force | Out-Null
+        Log "Startup enabled"
+    }
+
+    # Uninstaller EXE
+    Create-Uninstaller
+
+    # Registry uninstall entry
+    $key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Trumpet"
+    New-Item $key -Force | Out-Null
+    Set-ItemProperty $key DisplayName "Trumpet"
+    Set-ItemProperty $key UninstallString "`"$UninstallEXE`""
+    Set-ItemProperty $key Publisher "LobCorp"
+    Set-ItemProperty $key DisplayVersion "1.0.0"
+    Log "Registered in Apps & Features"
+
+    Log "Launching Trumpet..."
+    Start-Process (Join-Path $ProgramDir "Trumpet.exe")
+
+    Log "Done."
 }
 
-# Run installer
 Install-Trumpet
