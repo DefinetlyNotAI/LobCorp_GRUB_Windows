@@ -5,8 +5,14 @@ $currentUser = New-Object Security.Principal.WindowsPrincipal([Security.Principa
 $isAdmin = $currentUser.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin) {
-    Start-Process "$PSHOME\powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
-    exit
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.MessageBox]::Show(
+            "This installer must be run as administrator.",
+            "Administrator Required",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+    )
+    exit 1
 }
 
 # Force TLS 1.2
