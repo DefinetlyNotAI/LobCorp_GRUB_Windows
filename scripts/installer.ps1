@@ -19,6 +19,7 @@ if (-not $currentUser.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Net.Http
 
 # Paths
 $ProgramDir = "C:\Program Files\Trumpet"
@@ -68,7 +69,7 @@ $form.Controls.Add($btnInstall)
 # Logging helper
 function Log($msg)
 {
-    Write-Host "[`$(Get-Date -Format 'HH:mm:ss')] $msg"
+Write-Host "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $msg
 }
 
 # Close running Trumpet
