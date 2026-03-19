@@ -163,7 +163,7 @@ cmake --build cmake-build-release --target Trumpet -- -j 18
 Then run (after putting `trumpet/.customTrumpets` in place `%USERPROFILE%`):
 
 ```powershell
-.\\build\\Trumpet.exe
+.\build\Trumpet.exe
 ```
 
 ## 7) Operational checklist
