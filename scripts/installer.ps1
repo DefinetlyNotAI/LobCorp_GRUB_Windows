@@ -83,41 +83,35 @@ function Close-TrumpetIfRunning
 }
 
 # Download file with synchronous progress and file size info
-function DownloadFile($url, $dest)
-{
-    $wc = New-Object System.Net.WebClient
-    $size = 0
+function DownloadFileHttpClient($url, $dest, [int]$weight=0) {
+    $client = [System.Net.Http.HttpClient]::new()
+    $resp = $client.GetAsync($url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).Result
 
-    try
-    {
-        # Attempt to get remote file size
-        $req = [System.Net.WebRequest]::Create($url)
-        $req.Method = "HEAD"
-        $resp = $req.GetResponse()
-        $size = $resp.Headers["Content-Length"]
-        $resp.Close()
-    }
-    catch
-    {
-        $size = 0
-    }
+    $total = $resp.Content.Headers.ContentLength
+    if ($total) { Log "Downloading $url ($([math]::Round($total/1MB,2)) MB) -> $dest" } else { Log "Downloading $url -> $dest" }
 
-    if ($size -gt 0)
-    {
-        $sizeMB = [math]::Round($size / 1MB, 2)
-        Log "Downloading $url ($sizeMB MB) -> $dest"
-    }
-    else
-    {
-        Log "Downloading $url -> $dest"
+    $stream = $resp.Content.ReadAsStreamAsync().Result
+    $fs = [System.IO.File]::Open($dest, [System.IO.FileMode]::Create)
+
+    $buffer = New-Object byte[] 8192
+    $read = 0
+    $bytesRead = 0
+    while (($read = $stream.Read($buffer,0,$buffer.Length)) -gt 0) {
+        $fs.Write($buffer,0,$read)
+        $bytesRead += $read
+        if ($total) {
+            $progress.Value = [int](($bytesRead / $total) * $weight)
+            $form.Refresh()
+        }
     }
 
-    $wc.DownloadProgressChanged += {
-        $progress.Value = $_.ProgressPercentage
-        $form.Refresh()
-    }
+    $fs.Close()
+    $stream.Close()
+    $resp.Dispose()
+    $client.Dispose()
 
-    $wc.DownloadFile($url, $dest)
+    if ($weight -gt 0 -and -not $total) { $progress.Value += $weight; $form.Refresh() }
+
     Log "Downloaded $dest"
 }
 
@@ -148,7 +142,7 @@ function Install-Trumpet
             {
                 Log "$f exists, overwriting..."
             }
-            DownloadFile $Urls[$f] $dest
+            DownloadFileHttpClient $Urls[$f] $dest
             $created += $dest
             $currentProgress += $fileWeight
             $progress.Value = [int]$currentProgress
@@ -156,7 +150,7 @@ function Install-Trumpet
         }
 
         # Download and extract ZIP (30%)
-        DownloadFile $Urls['Zip'] $ZipFile
+        DownloadFileHttpClient $Urls['Zip'] $ZipFile
         $progress.Value = 60
         $form.Refresh()
         Log "Extracting ZIP..."
