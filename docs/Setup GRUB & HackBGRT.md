@@ -22,7 +22,7 @@ Setup Instructions:
 - Disable [Secure Boot](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/disabling-secure-boot?view=windows-11) (To allow non-Microsoft software to run):
 - Disable BitLocker (To be able to install Grub on the disk and allow it to be readable correctly)
     - To disable BitLocker run the following PowerShell command and wait until it completes \[must be in admin]:
-  ```bash
+  ```powershell
   # Replace C: with your windows drive
   manage-bde -off C:
   
@@ -32,7 +32,7 @@ Setup Instructions:
 
 If you want to know if your system can support this setup, run the following command in PowerShell (must be in admin):
 
-```bash
+```powershell
 powershell -ExecutionPolicy Bypass `
 -Command "irm https://raw.githubusercontent.com/DefinetlyNotAI/LobCorp_GRUB_Windows/main/scripts/checker.ps1 | iex"
 
