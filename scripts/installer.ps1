@@ -66,7 +66,7 @@ $form.Controls.Add($btnInstall)
 
 # Logging helper
 function Log($msg) {
-    Write-Host "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $msg
+    Write-Host ( "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $msg )
 }
 
 # Close running Trumpet
