@@ -9,6 +9,8 @@ cmake_install.cmake
 Makefile
 cmake-build-debug/
 /cmake-build-release/
+bin/
+obj/
 
 # ------------------
 # Windows executable and object files
