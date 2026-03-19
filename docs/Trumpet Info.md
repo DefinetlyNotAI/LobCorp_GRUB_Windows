@@ -23,22 +23,7 @@ Trumpet has three core behaviors:
 
 ## Install (recommended)
 
-Use `scripts/installer.ps1` as the primary installation path.
-
-The installer:
-
-- Downloads `Trumpet.exe`, `LICENSE`, and this README into `C:\Program Files\Trumpet`
-- Downloads and extracts `Trumpets.media.zip` into your profile (creating `.customTrumpets`)
-- Optionally adds startup (`HKCU:\Software\Microsoft\Windows\CurrentVersion\Run`, value `Trumpet`)
-- Generates `C:\Program Files\Trumpet\uninstall-trumpet.ps1`
-
-Run it from PowerShell:
-
-```powershell
-powershell -ExecutionPolicy Bypass `
--Command "irm https://raw.githubusercontent.com/DefinetlyNotAI/LobCorp_GRUB_Windows/main/scripts/installer.ps1 | iex"
-
-```
+Use the attached installer.exe
 
 ## Runtime controls
 

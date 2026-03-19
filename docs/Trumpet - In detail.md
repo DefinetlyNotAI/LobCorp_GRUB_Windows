@@ -166,6 +166,9 @@ Then run (after putting `trumpet/.customTrumpets` in place `%USERPROFILE%`):
 .\build\Trumpet.exe
 ```
 
+> Note this also creates the uninstaller.exe as well as installer.exe which can be sent to users for easier installation 
+> and uninstallation.
+
 ## 7) Operational checklist
 
 Before running `Trumpet.exe`, confirm:
