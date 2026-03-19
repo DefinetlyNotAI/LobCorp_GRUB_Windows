@@ -11,10 +11,10 @@ $ZipFile = "$env:TEMP\Trumpets.media.zip"
 
 # URLs
 $Urls = @{
-    'Trumpet.exe' = 'https://github.com/DefinetlyNotAI/LobCorp_GRUB_Windows/releases/download/1.0.0-trumpet/Trumpet.exe'
-    'LICENSE' = 'https://raw.githubusercontent.com/DefinetlyNotAI/LobCorp_GRUB_Windows/main/LICENSE'
-    'README.md' = 'https://raw.githubusercontent.com/DefinetlyNotAI/LobCorp_GRUB_Windows/main/trumpet/README.md'
-    'Zip' = 'https://github.com/DefinetlyNotAI/LobCorp_GRUB_Windows/releases/download/1.0.0-trumpet/Trumpets.media.zip'
+    'Trumpet.exe' = ''
+    'LICENSE' = ''
+    'Trumpet Info.md' = ''
+    'Zip' = ''
 }
 
 # Form setup
@@ -53,7 +53,7 @@ function Install-Trumpet {
         if (!(Test-Path $ProgramDir)) { New-Item -ItemType Directory -Path $ProgramDir -Force }
 
         # Download main files
-        $files = @('Trumpet.exe','LICENSE','README.md')
+        $files = @('Trumpet.exe','LICENSE','Trumpet Info.md')
         foreach ($f in $files) {
             $progress.Value += 10
             $dest = Join-Path $ProgramDir $f
