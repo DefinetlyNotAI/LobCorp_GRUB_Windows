@@ -29,7 +29,7 @@ set(TRUMPET_SOURCES
         trumpet/resources/resources.rc
 )
 
-add_executable(Trumpet ${TRUMPET_SOURCES})
+add_executable(Trumpet EXCLUDE_FROM_ALL ${TRUMPET_SOURCES})
 
 # Output directory for main exe
 set_target_properties(Trumpet PROPERTIES
@@ -71,7 +71,7 @@ set(UNINSTALLER_SOURCES
         trumpet/resources/resources.rc
 )
 
-add_executable(TrumpetUninstaller ${UNINSTALLER_SOURCES})
+add_executable(TrumpetUninstaller EXCLUDE_FROM_ALL ${UNINSTALLER_SOURCES})
 
 # Output directory for uninstaller exe
 set_target_properties(TrumpetUninstaller PROPERTIES
@@ -220,9 +220,9 @@ set(TRUMPET_INSTALLER_ASSETS
         "${CUSTOM_TRUMPETS_ZIP}"
 )
 
-add_custom_target(GenerateInstallerAssets DEPENDS ${TRUMPET_INSTALLER_ASSETS})
+set_source_files_properties(${TRUMPET_INSTALLER_ASSETS} PROPERTIES HEADER_FILE_ONLY TRUE)
 
-add_executable(Installer ${INSTALLER_SOURCES} "${INSTALLER_ASSETS_RC}")
+add_executable(Installer EXCLUDE_FROM_ALL ${INSTALLER_SOURCES} "${INSTALLER_ASSETS_RC}" ${TRUMPET_INSTALLER_ASSETS})
 
 set_target_properties(Installer PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${TRUMPET_BUILD_DIR}"
@@ -231,7 +231,6 @@ set_target_properties(Installer PROPERTIES
 )
 
 target_include_directories(Installer PRIVATE "${TRUMPET_EMBED_DIR}")
-add_dependencies(Installer GenerateInstallerAssets)
 
 if (TRUMPET_POWERSHELL_EXECUTABLE)
     file(TO_CMAKE_PATH "${TRUMPET_POWERSHELL_EXECUTABLE}" TRUMPET_POWERSHELL_EXECUTABLE_CMAKE)
@@ -262,8 +261,18 @@ endif()
 # Ordered build pipeline: Trumpet -> Uninstaller -> Installer
 add_custom_target(trumpet-only DEPENDS Trumpet)
 add_custom_target(full-build DEPENDS Installer)
-add_dependencies(GenerateInstallerAssets TrumpetUninstaller)
 add_dependencies(TrumpetUninstaller Trumpet)
+
+add_custom_target(full-build-fresh
+        COMMAND ${CMAKE_COMMAND} -E rm -f
+        "${TRUMPET_EXE_HEADER}"
+        "${UNINSTALLER_EXE_HEADER}"
+        "${LICENSE_HEADER}"
+        "${README_HEADER}"
+        "${CUSTOM_TRUMPETS_ZIP}"
+        COMMAND ${CMAKE_COMMAND} --build "${CMAKE_BINARY_DIR}" --target full-build
+        USES_TERMINAL
+)
 
 if (TRUMPET_BUILD_ALL_DEFAULT)
     add_custom_target(build_all_default ALL DEPENDS full-build)

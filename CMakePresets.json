@@ -15,13 +15,6 @@
         "TRUMPET_RECREATE_ALL_GENERATED": "OFF",
         "CMAKE_CXX_COMPILER": "C:/msys64/mingw64/bin/g++.exe"
       }
-    },
-    {
-      "name": "release-fresh",
-      "inherits": "release",
-      "cacheVariables": {
-        "TRUMPET_RECREATE_ALL_GENERATED": "ON"
-      }
     }
   ],
   "buildPresets": [
@@ -41,10 +34,10 @@
     },
     {
       "name": "full-build-fresh",
-      "configurePreset": "release-fresh",
+      "configurePreset": "release",
       "cleanFirst": true,
       "targets": [
-        "full-build"
+        "full-build-fresh"
       ]
     },
     {

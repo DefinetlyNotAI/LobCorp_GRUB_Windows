@@ -1,6 +1,6 @@
 ﻿# Trumpet - In Detail
 
-This document is the developer guide for build flow, architecture, generated assets, and troubleshooting.
+sThis document is the developer guide for build flow, architecture, generated assets, and troubleshooting.
 
 ## 1. Project layout
 
@@ -47,7 +47,7 @@ Primary artifacts in `build/`:
 
 Ordered dependency chain:
 
-`Trumpet -> TrumpetUninstaller -> GenerateInstallerAssets -> Installer`
+`Trumpet -> TrumpetUninstaller -> Installer`
 
 User-facing custom targets in `CMakeLists.txt`:
 
@@ -64,10 +64,9 @@ User-facing custom targets in `CMakeLists.txt`:
 - `full-build-fresh`
 - `basic-test`
 
-Internal configure presets:
+Configure preset:
 
 - `release`
-- `release-fresh` (forces full regeneration of generated headers/assets)
 
 ## 5. Build commands
 
