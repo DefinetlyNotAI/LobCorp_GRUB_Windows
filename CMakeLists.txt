@@ -13,9 +13,9 @@ set(TRUMPET_BUILD_DIR "${CMAKE_SOURCE_DIR}/build")
 set(TRUMPET_EMBED_DIR "${CMAKE_SOURCE_DIR}/trumpet/generated")
 file(MAKE_DIRECTORY "${TRUMPET_BUILD_DIR}")
 file(MAKE_DIRECTORY "${TRUMPET_EMBED_DIR}")
+file(REMOVE "${TRUMPET_EMBED_DIR}/customTrumpets.zip")
 
 option(TRUMPET_BUILD_ALL_DEFAULT "Build all targets in order by default (Trumpet -> Uninstaller -> Installer)" OFF)
-option(TRUMPET_EMBED_CUSTOM_TRUMPETS "Embed customTrumpets.zip into CustomTrumpetsZip.h (slow for large media packs)" OFF)
 
 # ----------------------
 # Main Trumpet executable
@@ -130,7 +130,7 @@ set(TRUMPET_EXE_HEADER "${TRUMPET_EMBED_DIR}/TrumpetExe.h")
 set(UNINSTALLER_EXE_HEADER "${TRUMPET_EMBED_DIR}/UninstallerExe.h")
 set(LICENSE_HEADER "${TRUMPET_EMBED_DIR}/LicenseTxt.h")
 set(README_HEADER "${TRUMPET_EMBED_DIR}/ReadmeMd.h")
-set(CUSTOM_TRUMPETS_ZIP "${TRUMPET_EMBED_DIR}/customTrumpets.zip")
+set(CUSTOM_TRUMPETS_ZIP "${CMAKE_BINARY_DIR}/customTrumpets.zip")
 set(CUSTOM_TRUMPETS_HEADER "${TRUMPET_EMBED_DIR}/CustomTrumpetsZip.h")
 
 # Track files inside the custom media folder so ZIP regeneration is accurate.
@@ -138,7 +138,7 @@ file(GLOB_RECURSE CUSTOM_TRUMPETS_FILES CONFIGURE_DEPENDS "${CUSTOM_TRUMPETS_DIR
 
 add_custom_command(
         OUTPUT "${CUSTOM_TRUMPETS_ZIP}"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${TRUMPET_EMBED_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}"
         COMMAND ${CMAKE_COMMAND} -E tar cf "${CUSTOM_TRUMPETS_ZIP}" --format=zip -- "${CUSTOM_TRUMPETS_DIR}"
         DEPENDS ${CUSTOM_TRUMPETS_FILES}
         COMMENT "Packaging ${CUSTOM_TRUMPETS_DIR} -> ${CUSTOM_TRUMPETS_ZIP}"
@@ -193,33 +193,25 @@ add_custom_command(
         VERBATIM
 )
 
-if (TRUMPET_EMBED_CUSTOM_TRUMPETS)
-    add_custom_command(
-            OUTPUT "${CUSTOM_TRUMPETS_HEADER}"
-            COMMAND ${CMAKE_COMMAND}
-            -DINPUT_FILE=${CUSTOM_TRUMPETS_ZIP}
-            -DOUTPUT_FILE=${CUSTOM_TRUMPETS_HEADER}
-            -DSYMBOL_NAME=CustomTrumpetsZip
-            -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
-            DEPENDS "${CUSTOM_TRUMPETS_ZIP}"
-            COMMENT "Embedding customTrumpets.zip -> CustomTrumpetsZip.h"
-            VERBATIM
-    )
-else()
-    message(STATUS "TRUMPET_EMBED_CUSTOM_TRUMPETS=OFF: using external customTrumpets.zip next to Installer.exe")
-endif()
+add_custom_command(
+        OUTPUT "${CUSTOM_TRUMPETS_HEADER}"
+        COMMAND ${CMAKE_COMMAND}
+        -DINPUT_FILE=${CUSTOM_TRUMPETS_ZIP}
+        -DOUTPUT_FILE=${CUSTOM_TRUMPETS_HEADER}
+        -DSYMBOL_NAME=CustomTrumpetsZip
+        -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
+        DEPENDS "${CUSTOM_TRUMPETS_ZIP}"
+        COMMENT "Embedding customTrumpets.zip -> CustomTrumpetsZip.h"
+        VERBATIM
+)
 
 set(TRUMPET_INSTALLER_ASSETS
         "${TRUMPET_EXE_HEADER}"
         "${UNINSTALLER_EXE_HEADER}"
         "${LICENSE_HEADER}"
         "${README_HEADER}"
-        "${CUSTOM_TRUMPETS_ZIP}"
+        "${CUSTOM_TRUMPETS_HEADER}"
 )
-
-if (TRUMPET_EMBED_CUSTOM_TRUMPETS)
-    list(APPEND TRUMPET_INSTALLER_ASSETS "${CUSTOM_TRUMPETS_HEADER}")
-endif()
 
 add_custom_target(GenerateInstallerAssets DEPENDS ${TRUMPET_INSTALLER_ASSETS})
 
@@ -233,16 +225,6 @@ set_target_properties(Installer PROPERTIES
 
 target_include_directories(Installer PRIVATE "${TRUMPET_EMBED_DIR}")
 add_dependencies(Installer GenerateInstallerAssets)
-
-if (TRUMPET_EMBED_CUSTOM_TRUMPETS)
-    target_compile_definitions(Installer PRIVATE TRUMPET_EMBED_CUSTOM_TRUMPETS=1)
-endif()
-
-add_custom_command(TARGET Installer POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CUSTOM_TRUMPETS_ZIP}" "$<TARGET_FILE_DIR:Installer>/customTrumpets.zip"
-        COMMENT "Copying customTrumpets.zip next to Installer.exe"
-        VERBATIM
-)
 
 if (TRUMPET_POWERSHELL_EXECUTABLE)
     file(TO_CMAKE_PATH "${TRUMPET_POWERSHELL_EXECUTABLE}" TRUMPET_POWERSHELL_EXECUTABLE_CMAKE)
@@ -315,16 +297,11 @@ add_test(NAME generated_readme_header_nonzero
         -DSYMBOL_NAME=ReadmeMd
         -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
 
-if (TRUMPET_EMBED_CUSTOM_TRUMPETS)
-    add_test(NAME generated_custom_zip_header_nonzero
-            COMMAND ${CMAKE_COMMAND}
-            -DHEADER_PATH=${CUSTOM_TRUMPETS_HEADER}
-            -DSYMBOL_NAME=CustomTrumpetsZip
-            -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
-else()
-    add_test(NAME generated_custom_zip_exists
-            COMMAND ${CMAKE_COMMAND} -E md5sum "${CUSTOM_TRUMPETS_ZIP}")
-endif()
+add_test(NAME generated_custom_zip_header_nonzero
+        COMMAND ${CMAKE_COMMAND}
+        -DHEADER_PATH=${CUSTOM_TRUMPETS_HEADER}
+        -DSYMBOL_NAME=CustomTrumpetsZip
+        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
 
 add_custom_target(autotest
         COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure

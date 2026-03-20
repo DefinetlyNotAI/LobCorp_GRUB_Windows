@@ -10,22 +10,20 @@
       "name": "msys2-debug",
       "displayName": "MSYS2 Debug",
       "generator": "MinGW Makefiles",
-      "binaryDir": "${sourceDir}/cmake/cmake-build-debug",
+      "binaryDir": "${sourceDir}/cmake/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "C:/msys64/mingw64/bin/g++.exe",
-        "TRUMPET_EMBED_CUSTOM_TRUMPETS": "OFF"
+        "CMAKE_CXX_COMPILER": "C:/msys64/mingw64/bin/g++.exe"
       }
     },
     {
       "name": "msys2-release",
       "displayName": "MSYS2 Release",
       "generator": "MinGW Makefiles",
-      "binaryDir": "${sourceDir}/cmake/cmake-build-release",
+      "binaryDir": "${sourceDir}/cmake/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_CXX_COMPILER": "C:/msys64/mingw64/bin/g++.exe",
-        "TRUMPET_EMBED_CUSTOM_TRUMPETS": "OFF"
+        "CMAKE_CXX_COMPILER": "C:/msys64/mingw64/bin/g++.exe"
       }
     }
   ],

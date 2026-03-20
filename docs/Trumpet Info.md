@@ -41,8 +41,8 @@ This repository includes `CMakePresets.json` with MSYS2 presets using:
 
 - `C:/msys64/mingw64/bin/g++.exe`
 - build dirs under `cmake/`:
-  - `cmake/cmake-build-debug`
-  - `cmake/cmake-build-release`
+  - `cmake/debug`
+  - `cmake/build`
 
 Recommended commands:
 
@@ -52,12 +52,20 @@ cmake --build --preset build-all-release
 cmake --build --preset autotest-release
 ```
 
-## Custom media ZIP packaging mode
+Equivalent explicit command style:
 
-`TRUMPET_EMBED_CUSTOM_TRUMPETS`:
+```powershell
+cmake -S . -B cmake/build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="C:/msys64/mingw64/bin/g++.exe"
+cmake --build cmake/build --target build_all
+cmake --build cmake/build --target autotest
+```
 
-- `OFF` (default): uses external `customTrumpets.zip` next to `Installer.exe` (fast).
-- `ON`: embeds ZIP into `CustomTrumpetsZip.h` (can be very slow with large ZIP files).
+## Custom media packaging
+
+Custom media is always embedded into `CustomTrumpetsZip.h` for installer builds.
+
+- `customTrumpets.zip` is staged in the active build directory (`cmake/build` or `cmake/debug`).
+- `CustomTrumpetsZip.h` is generated in `trumpet/generated` and used by `Installer.exe`.
 
 ## Runtime controls
 

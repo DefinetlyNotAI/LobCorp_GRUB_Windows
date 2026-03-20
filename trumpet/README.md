@@ -37,18 +37,31 @@ cmake --preset msys2-release
 cmake --build --preset build-all-release
 ```
 
+Equivalent explicit build-dir commands:
+
+```powershell
+cmake -S . -B cmake/build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="C:/msys64/mingw64/bin/g++.exe"
+cmake --build cmake/build --target build_all
+```
+
+Debug build-dir command:
+
+```powershell
+cmake -S . -B cmake/debug -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER="C:/msys64/mingw64/bin/g++.exe"
+cmake --build cmake/debug
+```
+
 This gives you the ordered build pipeline:
 
 `Trumpet -> TrumpetUninstaller -> Installer`
 
-## Custom media embedding mode
+## Custom media embedding
 
-`TRUMPET_EMBED_CUSTOM_TRUMPETS` controls how `.customTrumpets` is handled:
+`.customTrumpets` is always packaged and embedded into `CustomTrumpetsZip.h`.
 
-- `OFF` (default): build packages `customTrumpets.zip` and copies it next to `Installer.exe`.
-- `ON`: build converts zip bytes into `CustomTrumpetsZip.h` and embeds it in `Installer.exe`.
-
-For large media packs, keep this `OFF` to avoid very slow header generation.
+- `trumpet/generated` stays header-only (`*.h`).
+- `customTrumpets.zip` is staged in the active build directory (`cmake/build` or `cmake/debug`) and then embedded.
+- `Installer.exe` always extracts from embedded bytes in `CustomTrumpetsZip.h`.
 
 ## Additional docs
 

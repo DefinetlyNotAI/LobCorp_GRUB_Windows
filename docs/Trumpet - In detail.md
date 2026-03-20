@@ -57,21 +57,15 @@ Installer depends on generated files in `trumpet/generated`:
 - `UninstallerExe.h`
 - `LicenseTxt.h`
 - `ReadmeMd.h`
-- `customTrumpets.zip`
-- optional: `CustomTrumpetsZip.h`
+- `CustomTrumpetsZip.h`
 
-### Important option for large media packs
-
-`TRUMPET_EMBED_CUSTOM_TRUMPETS` controls whether `customTrumpets.zip` is converted to `CustomTrumpetsZip.h`.
-
-- `OFF` (default): fast build, zip copied next to `Installer.exe`, installer extracts from external `customTrumpets.zip`.
-- `ON`: zip is embedded into C++ header. This can be very slow for large zips.
+`customTrumpets.zip` is generated in the active CMake build directory (for example `cmake/build`) and then embedded into `CustomTrumpetsZip.h`.
 
 If your build appears "stuck" at:
 
 `Embedding customTrumpets.zip -> CustomTrumpetsZip.h`
 
-it is usually heavy processing for a large zip (not a deadlock). Use `TRUMPET_EMBED_CUSTOM_TRUMPETS=OFF` unless single-file installer embedding is required.
+it is usually heavy processing for a large zip (not a deadlock).
 
 ## 5) Build directories inside `cmake/`
 
@@ -79,8 +73,8 @@ Yes, this is supported and now documented through `CMakePresets.json`.
 
 Presets use:
 
-- `cmake/cmake-build-debug`
-- `cmake/cmake-build-release`
+- `cmake/debug`
+- `cmake/build`
 
 Compiler path in presets is pinned to:
 
@@ -96,34 +90,30 @@ cmake --build --preset build-all-release
 cmake --build --preset autotest-release
 ```
 
+Equivalent explicit build-dir commands:
+
+```powershell
+cmake -S . -B cmake/build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="C:/msys64/mingw64/bin/g++.exe"
+cmake --build cmake/build --target build_all
+cmake --build cmake/build --target autotest
+```
+
 Debug configure/build:
 
 ```powershell
-cmake --preset msys2-debug
-cmake --build --preset build-debug
-```
-
-If you explicitly want embedded zip mode:
-
-```powershell
-cmake --preset msys2-release -DTRUMPET_EMBED_CUSTOM_TRUMPETS=ON
-cmake --build --preset build-all-release
+cmake -S . -B cmake/debug -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER="C:/msys64/mingw64/bin/g++.exe"
+cmake --build cmake/debug
 ```
 
 ## 7) Installer behavior
 
-`trumpet/installer.cpp` now supports two extraction modes:
-
-- embedded mode (`TRUMPET_EMBED_CUSTOM_TRUMPETS=ON`): extract from `CustomTrumpetsZip.h` bytes,
-- external mode (default): extract from `customTrumpets.zip` next to `Installer.exe`.
-
-The build copies `customTrumpets.zip` next to `Installer.exe` automatically.
+`trumpet/installer.cpp` always extracts `.customTrumpets` from embedded `CustomTrumpetsZip.h` bytes.
 
 ## 8) Troubleshooting
 
 - **Error 130 / `Interrupt` during embed**: build was interrupted (`Ctrl+C`) while generating large header output.
-- **Slow build at 54% embed step**: disable embedded zip mode (`TRUMPET_EMBED_CUSTOM_TRUMPETS=OFF`).
-- **Installer extraction fails**: check PowerShell availability (`pwsh.exe` or `powershell.exe`) and verify `customTrumpets.zip` exists beside `Installer.exe`.
+- **Slow build at 54% embed step**: this is usually large-zip embedding work; let it finish.
+- **Installer extraction fails**: check PowerShell availability (`pwsh.exe` or `powershell.exe`).
 - **Trumpet exits at startup**: missing files under `%USERPROFILE%\.customTrumpets`.
 - **No overlay or audio**: verify PNG/WAV names and paths exactly match expected names.
 
