@@ -26,7 +26,7 @@ Outputs go to top-level `build/`:
 
 Generated installer assets go to:
 
-- `build/generated`
+- `trumpet/generated`
 
 ## Preset-based build (recommended)
 

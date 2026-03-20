@@ -10,7 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Build settings
 set(TRUMPET_BUILD_DIR "${CMAKE_SOURCE_DIR}/build")
-set(TRUMPET_EMBED_DIR "${TRUMPET_BUILD_DIR}/generated")
+set(TRUMPET_EMBED_DIR "${CMAKE_SOURCE_DIR}/trumpet/generated")
 file(MAKE_DIRECTORY "${TRUMPET_BUILD_DIR}")
 file(MAKE_DIRECTORY "${TRUMPET_EMBED_DIR}")
 
@@ -132,20 +132,6 @@ set(LICENSE_HEADER "${TRUMPET_EMBED_DIR}/LicenseTxt.h")
 set(README_HEADER "${TRUMPET_EMBED_DIR}/ReadmeMd.h")
 set(CUSTOM_TRUMPETS_ZIP "${TRUMPET_EMBED_DIR}/customTrumpets.zip")
 set(CUSTOM_TRUMPETS_HEADER "${TRUMPET_EMBED_DIR}/CustomTrumpetsZip.h")
-
-function(trumpet_write_embed_stub header_path symbol_name)
-    if (NOT EXISTS "${header_path}")
-        file(WRITE "${header_path}"
-                "#pragma once\n#include <cstddef>\n\nconst unsigned char ${symbol_name}[] = { 0x00 };\nconst std::size_t ${symbol_name}_len = 0;\n")
-    endif()
-endfunction()
-
-# Keep IDE/indexing happy before first asset generation pass.
-trumpet_write_embed_stub("${TRUMPET_EXE_HEADER}" "TrumpetExe")
-trumpet_write_embed_stub("${UNINSTALLER_EXE_HEADER}" "UninstallerExe")
-trumpet_write_embed_stub("${LICENSE_HEADER}" "LicenseTxt")
-trumpet_write_embed_stub("${README_HEADER}" "ReadmeMd")
-trumpet_write_embed_stub("${CUSTOM_TRUMPETS_HEADER}" "CustomTrumpetsZip")
 
 # Track files inside the custom media folder so ZIP regeneration is accurate.
 file(GLOB_RECURSE CUSTOM_TRUMPETS_FILES CONFIGURE_DEPENDS "${CUSTOM_TRUMPETS_DIR}/*")
@@ -305,20 +291,40 @@ add_test(NAME artifact_uninstaller_exists
 add_test(NAME artifact_installer_exists
         COMMAND ${CMAKE_COMMAND} -E md5sum $<TARGET_FILE:Installer>)
 
-add_test(NAME generated_trumpet_header_exists
-        COMMAND ${CMAKE_COMMAND} -E md5sum "${TRUMPET_EXE_HEADER}")
+add_test(NAME generated_trumpet_header_nonzero
+        COMMAND ${CMAKE_COMMAND}
+        -DHEADER_PATH=${TRUMPET_EXE_HEADER}
+        -DSYMBOL_NAME=TrumpetExe
+        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
 
-add_test(NAME generated_uninstaller_header_exists
-        COMMAND ${CMAKE_COMMAND} -E md5sum "${UNINSTALLER_EXE_HEADER}")
+add_test(NAME generated_uninstaller_header_nonzero
+        COMMAND ${CMAKE_COMMAND}
+        -DHEADER_PATH=${UNINSTALLER_EXE_HEADER}
+        -DSYMBOL_NAME=UninstallerExe
+        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
 
-add_test(NAME generated_license_header_exists
-        COMMAND ${CMAKE_COMMAND} -E md5sum "${LICENSE_HEADER}")
+add_test(NAME generated_license_header_nonzero
+        COMMAND ${CMAKE_COMMAND}
+        -DHEADER_PATH=${LICENSE_HEADER}
+        -DSYMBOL_NAME=LicenseTxt
+        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
 
-add_test(NAME generated_readme_header_exists
-        COMMAND ${CMAKE_COMMAND} -E md5sum "${README_HEADER}")
+add_test(NAME generated_readme_header_nonzero
+        COMMAND ${CMAKE_COMMAND}
+        -DHEADER_PATH=${README_HEADER}
+        -DSYMBOL_NAME=ReadmeMd
+        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
 
-add_test(NAME generated_custom_zip_header_exists
-        COMMAND ${CMAKE_COMMAND} -E md5sum "${CUSTOM_TRUMPETS_HEADER}")
+if (TRUMPET_EMBED_CUSTOM_TRUMPETS)
+    add_test(NAME generated_custom_zip_header_nonzero
+            COMMAND ${CMAKE_COMMAND}
+            -DHEADER_PATH=${CUSTOM_TRUMPETS_HEADER}
+            -DSYMBOL_NAME=CustomTrumpetsZip
+            -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
+else()
+    add_test(NAME generated_custom_zip_exists
+            COMMAND ${CMAKE_COMMAND} -E md5sum "${CUSTOM_TRUMPETS_ZIP}")
+endif()
 
 add_custom_target(autotest
         COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure

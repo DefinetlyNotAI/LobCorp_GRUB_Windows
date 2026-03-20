@@ -51,7 +51,7 @@ If any required file is missing, startup aborts.
 
 ## 4) Installer asset generation
 
-Installer depends on generated files in `build/generated`:
+Installer depends on generated files in `trumpet/generated`:
 
 - `TrumpetExe.h`
 - `UninstallerExe.h`

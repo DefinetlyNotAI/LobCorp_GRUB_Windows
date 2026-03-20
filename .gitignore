@@ -8,9 +8,10 @@
 cmake_install.cmake
 Makefile
 /cmake-build-debug/
-/cmake/cmake-build-debug/
 /cmake-build-release/
-/cmake/cmake-build-release/
+/cmake/build/
+/cmake/debug/
+/trumpet/generated/
 bin/
 obj/
 
