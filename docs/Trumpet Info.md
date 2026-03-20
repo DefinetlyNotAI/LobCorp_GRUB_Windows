@@ -2,6 +2,10 @@
 
 `Trumpet` is a Windows app that shows a visual warning overlay and plays warning audio based on your danger level.
 
+> Trumpet is 1.23 MB in size + 101 MB in media size
+> 
+> The standalone installer is 98.9MB in size, which includes all required files.
+
 ## What Trumpet does
 
 - Watches your user `DANGER_LEVEL` value.

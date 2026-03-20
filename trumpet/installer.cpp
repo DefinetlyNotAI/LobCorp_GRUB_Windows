@@ -165,6 +165,48 @@ bool LaunchAndVerifyTrumpet(const std::wstring& exePath) {
     return stillRunning;
 }
 
+bool SetRegSzValue(HKEY key, const wchar_t* name, const std::wstring& value) {
+    const auto* bytes = reinterpret_cast<const BYTE*>(value.c_str());
+    const auto size = static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t));
+    return RegSetValueExW(key, name, 0, REG_SZ, bytes, size) == ERROR_SUCCESS;
+}
+
+bool SetRegDwordValue(HKEY key, const wchar_t* name, const DWORD value) {
+    return RegSetValueExW(key, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value)) == ERROR_SUCCESS;
+}
+
+bool RegisterUninstallEntry(const fs::path& installDir) {
+    HKEY hKey = nullptr;
+    if (RegCreateKeyExW(HKEY_LOCAL_MACHINE,
+                        L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Trumpet",
+                        0,
+                        nullptr,
+                        REG_OPTION_NON_VOLATILE,
+                        KEY_SET_VALUE,
+                        nullptr,
+                        &hKey,
+                        nullptr) != ERROR_SUCCESS) {
+        return false;
+    }
+
+    const std::wstring uninstallExe = (installDir / "UninstallTrumpet.exe").wstring();
+    const std::wstring trumpetExe = (installDir / "Trumpet.exe").wstring();
+    const std::wstring quotedUninstallExe = L"\"" + uninstallExe + L"\"";
+
+    bool ok = SetRegSzValue(hKey, L"DisplayName", L"Trumpet");
+    ok = ok && SetRegSzValue(hKey, L"UninstallString", quotedUninstallExe);
+    ok = ok && SetRegSzValue(hKey, L"QuietUninstallString", quotedUninstallExe);
+    ok = ok && SetRegSzValue(hKey, L"InstallLocation", installDir.wstring());
+    ok = ok && SetRegSzValue(hKey, L"DisplayIcon", trumpetExe);
+    ok = ok && SetRegSzValue(hKey, L"Publisher", L"LobCorp");
+    ok = ok && SetRegSzValue(hKey, L"DisplayVersion", L"1.0");
+    ok = ok && SetRegDwordValue(hKey, L"NoModify", 1);
+    ok = ok && SetRegDwordValue(hKey, L"NoRepair", 1);
+
+    RegCloseKey(hKey);
+    return ok;
+}
+
 
 // Request admin rights via manifest: simpler if exe is built with requireAdministrator in manifest
 bool IsAdmin() {
@@ -236,6 +278,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     if (!ExtractZip(customTrumpetsZip.data(), customTrumpetsZip.size(), userCustom)) {
         MessageBoxW(nullptr, L"Failed to extract .customTrumpets", L"Installer", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
+    if (!RegisterUninstallEntry(targetDir)) {
+        MessageBoxW(nullptr, L"Failed to register uninstaller in Windows Settings.", L"Installer", MB_OK | MB_ICONERROR);
         return 1;
     }
 

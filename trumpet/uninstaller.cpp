@@ -43,6 +43,11 @@ bool DeleteFolder(const std::wstring& path) {
     return !ec;
 }
 
+void RemoveUninstallRegistration() {
+    RegDeleteTreeW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Trumpet");
+    RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Trumpet");
+}
+
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     if (!IsAdmin()) {
         MessageBoxW(nullptr, L"Please run as administrator.", L"Uninstaller", MB_OK | MB_ICONERROR);
@@ -72,13 +77,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             RegCloseKey(hKey);
         }
 
-        // Delete uninstall registry key
-        if (RegOpenKeyExW(HKEY_CURRENT_USER,
-                          L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
-                          0, KEY_ALL_ACCESS, &hKey) == ERROR_SUCCESS) {
-            RegDeleteKeyW(hKey, L"Trumpet");
-            RegCloseKey(hKey);
-        }
+        // Delete uninstall registration shown in Windows Settings.
+        RemoveUninstallRegistration();
 
         MessageBoxW(nullptr, L"Trumpet removed successfully.", L"Uninstaller", MB_OK | MB_ICONINFORMATION);
     } catch (...) {
