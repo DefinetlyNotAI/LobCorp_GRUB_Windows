@@ -33,22 +33,17 @@ Generated installer assets go to:
 Use the repository presets in `CMakePresets.json`:
 
 ```powershell
-cmake --preset msys2-release
-cmake --build --preset build-all-release
+cmake --build --preset trumpet-only
+cmake --build --preset full-build
+cmake --build --preset full-build-fresh
+cmake --build --preset basic-test
 ```
 
 Equivalent explicit build-dir commands:
 
 ```powershell
-cmake -S . -B cmake/build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="C:/msys64/mingw64/bin/g++.exe"
-cmake --build cmake/build --target build_all
-```
-
-Debug build-dir command:
-
-```powershell
-cmake -S . -B cmake/debug -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER="C:/msys64/mingw64/bin/g++.exe"
-cmake --build cmake/debug
+cmake --preset release
+cmake --build cmake/build --target full-build
 ```
 
 This gives you the ordered build pipeline:
@@ -57,11 +52,11 @@ This gives you the ordered build pipeline:
 
 ## Custom media embedding
 
-`.customTrumpets` is always packaged and embedded into `CustomTrumpetsZip.h`.
+`.customTrumpets` is always packaged and embedded into the installer binary as a resource.
 
 - `trumpet/generated` stays header-only (`*.h`).
-- `customTrumpets.zip` is staged in the active build directory (`cmake/build` or `cmake/debug`) and then embedded.
-- `Installer.exe` always extracts from embedded bytes in `CustomTrumpetsZip.h`.
+- `customTrumpets.zip` is staged at `cmake/zip/customTrumpets.zip` and then embedded.
+- `Installer.exe` extracts from its own embedded ZIP resource at runtime.
 
 ## Additional docs
 

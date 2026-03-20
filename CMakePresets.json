@@ -7,7 +7,7 @@
   },
   "configurePresets": [
     {
-      "name": "base-release",
+      "name": "release",
       "generator": "MinGW Makefiles",
       "binaryDir": "${sourceDir}/cmake/build",
       "cacheVariables": {
@@ -17,8 +17,8 @@
       }
     },
     {
-      "name": "base-release-fresh",
-      "inherits": "base-release",
+      "name": "release-fresh",
+      "inherits": "release",
       "cacheVariables": {
         "TRUMPET_RECREATE_ALL_GENERATED": "ON"
       }
@@ -26,32 +26,32 @@
   ],
   "buildPresets": [
     {
-      "name": "trumpet-build-only",
-      "configurePreset": "base-release",
+      "name": "trumpet-only",
+      "configurePreset": "release",
       "targets": [
-        "trumpet-build-only"
+        "trumpet-only"
       ]
     },
     {
-      "name": "build",
-      "configurePreset": "base-release",
+      "name": "full-build",
+      "configurePreset": "release",
       "targets": [
-        "build"
+        "full-build"
       ]
     },
     {
-      "name": "build-fresh",
-      "configurePreset": "base-release-fresh",
+      "name": "full-build-fresh",
+      "configurePreset": "release-fresh",
       "cleanFirst": true,
       "targets": [
-        "build"
+        "full-build"
       ]
     },
     {
-      "name": "test",
-      "configurePreset": "base-release",
+      "name": "basic-test",
+      "configurePreset": "release",
       "targets": [
-        "basic_test"
+        "basic-test"
       ]
     }
   ]

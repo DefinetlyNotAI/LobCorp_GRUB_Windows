@@ -1,135 +1,126 @@
 ﻿# Trumpet - In Detail
 
-This guide covers architecture, build pipeline, installer assets, and troubleshooting.
+This document is the developer guide for build flow, architecture, generated assets, and troubleshooting.
 
-## 1) What Trumpet does
+## 1. Project layout
 
-`Trumpet.exe` is a Windows background app that:
+- `trumpet/main.cpp`: runtime app (overlay, audio, hotkeys, danger logic).
+- `trumpet/installer.cpp`: self-contained installer that writes binaries/docs and extracts media.
+- `trumpet/uninstaller.cpp`: removal/cleanup app.
+- `trumpet/resources/resources.rc`: shared icon resource used by all EXEs.
+- `trumpet/.customTrumpets`: source media packaged for installer embedding.
+- `trumpet/generated`: generated headers used by installer build.
+- `cmake/zip/customTrumpets.zip`: persistent media archive used for installer resource embedding.
 
-- draws a full-screen transparent PNG overlay,
-- loops tiered WAV audio,
-- reacts to user-level `DANGER_LEVEL` in `HKCU\Environment`,
-- supports hotkeys `F6`, `F7`, `F8`.
+## 2. Runtime model (`Trumpet.exe`)
 
-Entry point: `trumpet/main.cpp` (`wWinMain`).
+### Danger source
 
-## 2) Runtime behavior
+`DANGER_LEVEL` is read from `HKCU\Environment` and clamped to `0..100`.
 
-### Asset locations
+### Tier mapping
 
-At startup, `initPaths()` builds these paths under `%USERPROFILE%\.customTrumpets`:
+- `0`: off
+- `20-49`: tier 1
+- `50-79`: tier 2
+- `80-100`: tier 3
+
+### Assets expected at runtime
+
+Resolved from `%USERPROFILE%\.customTrumpets`:
 
 - `overlay\trumpet1.png`, `overlay\trumpet2.png`, `overlay\trumpet3.png`
 - `audio\trumpet1.wav`, `audio\trumpet2.wav`, `audio\trumpet3.wav`
 
-If any required file is missing, startup aborts.
+### Hotkeys
 
-### Danger mapping
+- `F6/F7/F8` set canonical values `49/79/100`.
+- Pressing an already active hotkey toggles to off.
 
-- `0` => off
-- `20-49` => trumpet 1
-- `50-79` => trumpet 2
-- `80-100` => trumpet 3
+## 3. Build outputs and target graph
 
-### Control model
+Primary artifacts in `build/`:
 
-- `F6/F7/F8` set tier 1/2/3.
-- Pressing the same active hotkey toggles off.
-- Hotkey changes also write canonical values (`49`, `79`, `100`) to `DANGER_LEVEL`.
-- Auto-upgrade only: app escalates to higher tiers automatically, but only resets to off when danger hits `0`.
+- `Trumpet.exe`
+- `TrumpetUninstaller.exe`
+- `Installer.exe`
 
-## 3) Build targets
+Ordered dependency chain:
 
-`CMakeLists.txt` defines:
+`Trumpet -> TrumpetUninstaller -> GenerateInstallerAssets -> Installer`
 
-- `Trumpet` => `build/Trumpet.exe`
-- `TrumpetUninstaller` => `build/TrumpetUninstaller.exe`
-- `Installer` => `build/Installer.exe`
-- `GenerateInstallerAssets` => prepares generated headers + zip payload
-- `build_all` => ordered flow: `Trumpet -> TrumpetUninstaller -> Installer`
-- `autotest` => non-interactive smoke checks via CTest
+User-facing custom targets in `CMakeLists.txt`:
 
-## 4) Installer asset generation
+- `trumpet-only`
+- `full-build`
+- `basic-test`
 
-Installer depends on generated files in `trumpet/generated`:
+## 4. Presets (clean set)
+
+`CMakePresets.json` now exposes four build presets:
+
+- `trumpet-only`
+- `full-build`
+- `full-build-fresh`
+- `basic-test`
+
+Internal configure presets:
+
+- `release`
+- `release-fresh` (forces full regeneration of generated headers/assets)
+
+## 5. Build commands
+
+From repository root:
+
+```powershell
+cmake --build --preset trumpet-only
+cmake --build --preset full-build
+cmake --build --preset full-build-fresh
+cmake --build --preset basic-test
+```
+
+If needed, configure first explicitly:
+
+```powershell
+cmake --preset release
+```
+
+## 6. Installer asset generation
+
+Generated headers in `trumpet/generated`:
 
 - `TrumpetExe.h`
 - `UninstallerExe.h`
 - `LicenseTxt.h`
 - `ReadmeMd.h`
-- `CustomTrumpetsZip.h`
 
-`customTrumpets.zip` is generated in the active CMake build directory (for example `cmake/build`) and then embedded into `CustomTrumpetsZip.h`.
+Media packaging:
 
-If your build appears "stuck" at:
+- `.customTrumpets` is zipped to `cmake/zip/customTrumpets.zip`.
+- ZIP is embedded in `Installer.exe` as `RCDATA` resource.
+- Installer loads ZIP from its own resources at runtime and extracts to `%USERPROFILE%\.customTrumpets`.
 
-`Embedding customTrumpets.zip -> CustomTrumpetsZip.h`
+This keeps `Installer.exe` standalone.
 
-it is usually heavy processing for a large zip (not a deadlock).
+## 7. Resource/icon model
 
-By default, existing generated headers are reused. To force full regeneration of all embedded headers:
+- Shared IDs: `trumpet/resources/resource_ids.h`
+- Shared icon rc: `trumpet/resources/resources.rc`
+- All EXEs compile the same icon (`peBox.ico`).
 
-```powershell
-cmake --preset msys2-release -DTRUMPET_RECREATE_ALL_GENERATED=ON
-cmake --build --preset build-all-release
-```
+## 8. Troubleshooting
 
-## 5) Build directories inside `cmake/`
+- **Extraction fail in installer**: verify installer is run elevated and PowerShell is available (`powershell.exe` or `pwsh.exe`).
+- **Missing runtime media**: confirm files under `%USERPROFILE%\.customTrumpets` and exact names.
+- **Unexpected stale generated files**: run `cmake --build --preset full-build-fresh`.
+- **ZIP path checks**: inspect `cmake/zip/customTrumpets.zip` and list entries with `cmake -E tar tf`.
 
-Yes, this is supported and now documented through `CMakePresets.json`.
-
-Presets use:
-
-- `cmake/debug`
-- `cmake/build`
-
-Compiler path in presets is pinned to:
-
-- `C:/msys64/mingw64/bin/g++.exe`
-
-## 6) Recommended commands
-
-From repository root:
+## 9. Validation checklist
 
 ```powershell
-cmake --preset msys2-release
-cmake --build --preset build-all-release
-cmake --build --preset autotest-release
+cmake --build --preset full-build
+cmake --build --preset basic-test
+cmake -E tar tf "cmake/zip/customTrumpets.zip"
 ```
 
-Equivalent explicit build-dir commands:
-
-```powershell
-cmake -S . -B cmake/build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="C:/msys64/mingw64/bin/g++.exe"
-cmake --build cmake/build --target build_all
-cmake --build cmake/build --target autotest
-```
-
-Debug configure/build:
-
-```powershell
-cmake -S . -B cmake/debug -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER="C:/msys64/mingw64/bin/g++.exe"
-cmake --build cmake/debug
-```
-
-## 7) Installer behavior
-
-`trumpet/installer.cpp` always extracts `.customTrumpets` from embedded `CustomTrumpetsZip.h` bytes.
-
-## 8) Troubleshooting
-
-- **Error 130 / `Interrupt` during embed**: build was interrupted (`Ctrl+C`) while generating large header output.
-- **Slow build at 54% embed step**: this is usually large-zip embedding work; let it finish.
-- **Installer extraction fails**: check PowerShell availability (`pwsh.exe` or `powershell.exe`).
-- **Trumpet exits at startup**: missing files under `%USERPROFILE%\.customTrumpets`.
-- **No overlay or audio**: verify PNG/WAV names and paths exactly match expected names.
-
-## 9) Uninstall
-
-Use `TrumpetUninstaller.exe` or your installer-generated uninstall workflow.
-
-The uninstaller removes:
-
-- `C:\Program Files\Trumpet`
-- `%USERPROFILE%\.customTrumpets`
-- startup and uninstall registry keys for current user.

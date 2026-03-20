@@ -12,6 +12,7 @@ Makefile
 /cmake/build/
 /cmake/debug/
 /trumpet/generated/
+/cmake/zip
 bin/
 obj/
 

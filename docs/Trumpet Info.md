@@ -1,88 +1,69 @@
 # Trumpet Info
 
-Trumpet is a Windows overlay + audio alert app controlled by user-level `DANGER_LEVEL`.
+`Trumpet` is a Windows app that shows a visual warning overlay and plays warning audio based on your danger level.
 
-## What it does
+## What Trumpet does
 
-- Shows a transparent full-screen overlay image.
-- Plays looping tiered audio.
-- Maps `DANGER_LEVEL` to 3 trumpet tiers.
-- Supports runtime hotkeys (`F6`, `F7`, `F8`).
+- Watches your user `DANGER_LEVEL` value.
+- Shows a full-screen overlay image when danger is active.
+- Plays looping trumpet audio for the active danger tier.
+- Lets you quickly switch tiers with hotkeys.
 
-Tier mapping:
+### Danger tiers
 
-- `0` => off
-- `20-49` => tier 1
-- `50-79` => tier 2
-- `80-100` => tier 3
+- `0`: off
+- `20-49`: tier 1
+- `50-79`: tier 2
+- `80-100`: tier 3
 
-## Required media
+## Quick install (normal users)
 
-Trumpet reads media from `%USERPROFILE%\.customTrumpets`:
+1. Run `Installer.exe` **as Administrator**.
+2. Wait for the `Installation complete` message.
+3. Start `Trumpet.exe` from `C:\Program Files\Trumpet`.
 
-- `overlay\trumpet1.png`, `overlay\trumpet2.png`, `overlay\trumpet3.png`
-- `audio\trumpet1.wav`, `audio\trumpet2.wav`, `audio\trumpet3.wav`
+The installer is self-contained and carries everything it needs internally.
 
-If any of these files is missing, `Trumpet.exe` exits at startup.
+## First run and media files
 
-## Build outputs
+Trumpet uses files under:
 
-- `build/Trumpet.exe`
-- `build/TrumpetUninstaller.exe`
-- `build/Installer.exe`
+`%USERPROFILE%\.customTrumpets`
 
-Ordered all-at-once build target:
+Expected structure:
 
-- `build_all` (`Trumpet -> TrumpetUninstaller -> Installer`)
+- `overlay\trumpet1.png`
+- `overlay\trumpet2.png`
+- `overlay\trumpet3.png`
+- `audio\trumpet1.wav`
+- `audio\trumpet2.wav`
+- `audio\trumpet3.wav`
 
-## CMake presets
+If these files are missing/corrupt, Trumpet may fail to run correctly.
 
-This repository includes `CMakePresets.json` with MSYS2 presets using:
+## How to use Trumpet
 
-- `C:/msys64/mingw64/bin/g++.exe`
-- build dirs under `cmake/`:
-  - `cmake/debug`
-  - `cmake/build`
+- `F6`: set tier 1 (`DANGER_LEVEL=49`)
+- `F7`: set tier 2 (`DANGER_LEVEL=79`)
+- `F8`: set tier 3 (`DANGER_LEVEL=100`)
+- Pressing the same hotkey again toggles off.
 
-Recommended commands:
-
-```powershell
-cmake --preset msys2-release
-cmake --build --preset build-all-release
-cmake --build --preset autotest-release
-```
-
-Equivalent explicit command style:
-
-```powershell
-cmake -S . -B cmake/build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="C:/msys64/mingw64/bin/g++.exe"
-cmake --build cmake/build --target build_all
-cmake --build cmake/build --target autotest
-```
-
-## Custom media packaging
-
-Custom media is always embedded into `CustomTrumpetsZip.h` for installer builds.
-
-- `customTrumpets.zip` is staged in the active build directory (`cmake/build` or `cmake/debug`).
-- `CustomTrumpetsZip.h` is generated in `trumpet/generated` and used by `Installer.exe`.
-
-## Runtime controls
-
-- `F6` => set tier 1 (`DANGER_LEVEL=49`)
-- `F7` => set tier 2 (`DANGER_LEVEL=79`)
-- `F8` => set tier 3 (`DANGER_LEVEL=100`)
-- pressing same hotkey again toggles off
-
-Set `DANGER_LEVEL` manually:
+Optional manual control:
 
 ```powershell
 [Environment]::SetEnvironmentVariable("DANGER_LEVEL", "79", "User")
 ```
 
+## Troubleshooting
+
+- **Installer says extraction failed**: run `Installer.exe` as Administrator and try again.
+- **No overlay or sound**: verify all files exist in `%USERPROFILE%\.customTrumpets` with exact names.
+- **App closes immediately**: usually means required media files are missing or unreadable.
+
 ## Uninstall
 
-Run `TrumpetUninstaller.exe` or your generated uninstall workflow.
+- Run `UninstallTrumpet.exe` from `C:\Program Files\Trumpet`, or
+- Run `TrumpetUninstaller.exe` from your build output if you are testing builds.
 
-For full implementation details, see `docs/Trumpet - In detail.md`.
+For development/build internals, see `docs/Trumpet - In detail.md`.
 

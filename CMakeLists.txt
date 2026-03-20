@@ -260,13 +260,13 @@ elseif (MSVC)
 endif()
 
 # Ordered build pipeline: Trumpet -> Uninstaller -> Installer
-add_custom_target(trumpet-build-only DEPENDS Trumpet)
-add_custom_target(build DEPENDS Installer)
+add_custom_target(trumpet-only DEPENDS Trumpet)
+add_custom_target(full-build DEPENDS Installer)
 add_dependencies(GenerateInstallerAssets TrumpetUninstaller)
 add_dependencies(TrumpetUninstaller Trumpet)
 
 if (TRUMPET_BUILD_ALL_DEFAULT)
-    add_custom_target(build_all_default ALL DEPENDS build)
+    add_custom_target(build_all_default ALL DEPENDS full-build)
 endif()
 
 # ----------------------
@@ -310,10 +310,10 @@ add_test(NAME packaged_custom_zip_nonzero
         -DINPUT_FILE=${CUSTOM_TRUMPETS_ZIP}
         -P ${CMAKE_SOURCE_DIR}/cmake/AssertFileNonZero.cmake)
 
-add_custom_target(basic_test
+add_custom_target(basic-test
         COMMAND ${CMAKE_CTEST_COMMAND} -R "artifact_" --output-on-failure
         COMMAND ${CMAKE_CTEST_COMMAND} -R "packaged_custom_zip_nonzero" --output-on-failure
-        DEPENDS build
+        DEPENDS full-build
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
 
