@@ -67,6 +67,13 @@ If your build appears "stuck" at:
 
 it is usually heavy processing for a large zip (not a deadlock).
 
+By default, existing generated headers are reused. To force full regeneration of all embedded headers:
+
+```powershell
+cmake --preset msys2-release -DTRUMPET_RECREATE_ALL_GENERATED=ON
+cmake --build --preset build-all-release
+```
+
 ## 5) Build directories inside `cmake/`
 
 Yes, this is supported and now documented through `CMakePresets.json`.

@@ -16,6 +16,7 @@ file(MAKE_DIRECTORY "${TRUMPET_EMBED_DIR}")
 file(REMOVE "${TRUMPET_EMBED_DIR}/customTrumpets.zip")
 
 option(TRUMPET_BUILD_ALL_DEFAULT "Build all targets in order by default (Trumpet -> Uninstaller -> Installer)" OFF)
+option(TRUMPET_RECREATE_ALL_GENERATED "Force regeneration of all embedded *.h assets" OFF)
 
 # ----------------------
 # Main Trumpet executable
@@ -151,6 +152,7 @@ add_custom_command(
         -DINPUT_FILE=$<TARGET_FILE:Trumpet>
         -DOUTPUT_FILE=${TRUMPET_EXE_HEADER}
         -DSYMBOL_NAME=TrumpetExe
+        -DFORCE_RECREATE_ALL=${TRUMPET_RECREATE_ALL_GENERATED}
         -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
         DEPENDS Trumpet
         COMMENT "Embedding Trumpet.exe -> TrumpetExe.h"
@@ -163,6 +165,7 @@ add_custom_command(
         -DINPUT_FILE=$<TARGET_FILE:TrumpetUninstaller>
         -DOUTPUT_FILE=${UNINSTALLER_EXE_HEADER}
         -DSYMBOL_NAME=UninstallerExe
+        -DFORCE_RECREATE_ALL=${TRUMPET_RECREATE_ALL_GENERATED}
         -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
         DEPENDS TrumpetUninstaller
         COMMENT "Embedding Uninstaller.exe -> UninstallerExe.h"
@@ -175,6 +178,7 @@ add_custom_command(
         -DINPUT_FILE=${LICENSE_FILE}
         -DOUTPUT_FILE=${LICENSE_HEADER}
         -DSYMBOL_NAME=LicenseTxt
+        -DFORCE_RECREATE_ALL=${TRUMPET_RECREATE_ALL_GENERATED}
         -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
         DEPENDS "${LICENSE_FILE}"
         COMMENT "Embedding LICENSE -> LicenseTxt.h"
@@ -187,6 +191,7 @@ add_custom_command(
         -DINPUT_FILE=${README_FILE}
         -DOUTPUT_FILE=${README_HEADER}
         -DSYMBOL_NAME=ReadmeMd
+        -DFORCE_RECREATE_ALL=${TRUMPET_RECREATE_ALL_GENERATED}
         -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
         DEPENDS "${README_FILE}"
         COMMENT "Embedding README.md -> ReadmeMd.h"
@@ -199,6 +204,7 @@ add_custom_command(
         -DINPUT_FILE=${CUSTOM_TRUMPETS_ZIP}
         -DOUTPUT_FILE=${CUSTOM_TRUMPETS_HEADER}
         -DSYMBOL_NAME=CustomTrumpetsZip
+        -DFORCE_RECREATE_ALL=${TRUMPET_RECREATE_ALL_GENERATED}
         -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
         DEPENDS "${CUSTOM_TRUMPETS_ZIP}"
         COMMENT "Embedding customTrumpets.zip -> CustomTrumpetsZip.h"
