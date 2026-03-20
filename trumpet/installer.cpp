@@ -6,6 +6,7 @@
 #include <vector>
 #include <iostream>
 #include <limits>
+#include "resources/resource_ids.h"
 
 namespace fs = std::filesystem;
 
@@ -14,7 +15,6 @@ namespace fs = std::filesystem;
 #include "UninstallerExe.h"
 #include "LicenseTxt.h"
 #include "ReadmeMd.h"
-#include "CustomTrumpetsZip.h"
 
 bool WriteFile(const fs::path& path, const unsigned char* data, const size_t len) {
     try {
@@ -67,6 +67,24 @@ bool ExtractZip(const unsigned char* data, const size_t len, const fs::path& out
 
     fs::remove(tempZip);
     return exitCode == 0;
+}
+
+bool LoadCustomTrumpetsZip(std::vector<unsigned char>& outData) {
+    HRSRC resourceInfo = FindResourceW(nullptr, MAKEINTRESOURCEW(IDR_CUSTOM_TRUMPETS_ZIP), RT_RCDATA);
+    if (!resourceInfo) return false;
+
+    const DWORD resourceSize = SizeofResource(nullptr, resourceInfo);
+    if (resourceSize == 0) return false;
+
+    HGLOBAL loadedResource = LoadResource(nullptr, resourceInfo);
+    if (!loadedResource) return false;
+
+    const void* resourceData = LockResource(loadedResource);
+    if (!resourceData) return false;
+
+    outData.assign(static_cast<const unsigned char*>(resourceData),
+                   static_cast<const unsigned char*>(resourceData) + resourceSize);
+    return true;
 }
 
 
@@ -124,7 +142,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return 1;
     }
     fs::path userCustom = fs::path(userProfile) / ".customTrumpets";
-    if (!ExtractZip(CustomTrumpetsZip, CustomTrumpetsZip_len, userCustom)) {
+    std::vector<unsigned char> customTrumpetsZip;
+    if (!LoadCustomTrumpetsZip(customTrumpetsZip)) {
+        MessageBoxW(nullptr, L"Failed to load .customTrumpets archive resource", L"Installer", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
+    if (!ExtractZip(customTrumpetsZip.data(), customTrumpetsZip.size(), userCustom)) {
         MessageBoxW(nullptr, L"Failed to extract .customTrumpets", L"Installer", MB_OK | MB_ICONERROR);
         return 1;
     }

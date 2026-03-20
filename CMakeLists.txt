@@ -14,6 +14,7 @@ set(TRUMPET_EMBED_DIR "${CMAKE_SOURCE_DIR}/trumpet/generated")
 file(MAKE_DIRECTORY "${TRUMPET_BUILD_DIR}")
 file(MAKE_DIRECTORY "${TRUMPET_EMBED_DIR}")
 file(REMOVE "${TRUMPET_EMBED_DIR}/customTrumpets.zip")
+file(REMOVE "${TRUMPET_EMBED_DIR}/CustomTrumpetsZip.h")
 
 option(TRUMPET_BUILD_ALL_DEFAULT "Build all targets in order by default (Trumpet -> Uninstaller -> Installer)" OFF)
 option(TRUMPET_RECREATE_ALL_GENERATED "Force regeneration of all embedded *.h assets" OFF)
@@ -65,6 +66,7 @@ endif()
 # ----------------------
 set(UNINSTALLER_SOURCES
         trumpet/uninstaller.cpp
+        trumpet/resources/resources.rc
 )
 
 add_executable(TrumpetUninstaller ${UNINSTALLER_SOURCES})
@@ -102,6 +104,7 @@ endif()
 # ----------------------
 set(INSTALLER_SOURCES
         trumpet/installer.cpp
+        trumpet/resources/resources.rc
 )
 
 set(LICENSE_FILE "${CMAKE_SOURCE_DIR}/LICENSE")
@@ -132,7 +135,7 @@ set(UNINSTALLER_EXE_HEADER "${TRUMPET_EMBED_DIR}/UninstallerExe.h")
 set(LICENSE_HEADER "${TRUMPET_EMBED_DIR}/LicenseTxt.h")
 set(README_HEADER "${TRUMPET_EMBED_DIR}/ReadmeMd.h")
 set(CUSTOM_TRUMPETS_ZIP "${CMAKE_BINARY_DIR}/customTrumpets.zip")
-set(CUSTOM_TRUMPETS_HEADER "${TRUMPET_EMBED_DIR}/CustomTrumpetsZip.h")
+set(INSTALLER_ASSETS_RC "${CMAKE_BINARY_DIR}/installer_assets.rc")
 
 # Track files inside the custom media folder so ZIP regeneration is accurate.
 file(GLOB_RECURSE CUSTOM_TRUMPETS_FILES CONFIGURE_DEPENDS "${CUSTOM_TRUMPETS_DIR}/*")
@@ -140,10 +143,19 @@ file(GLOB_RECURSE CUSTOM_TRUMPETS_FILES CONFIGURE_DEPENDS "${CUSTOM_TRUMPETS_DIR
 add_custom_command(
         OUTPUT "${CUSTOM_TRUMPETS_ZIP}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}"
-        COMMAND ${CMAKE_COMMAND} -E tar cf "${CUSTOM_TRUMPETS_ZIP}" --format=zip -- "${CUSTOM_TRUMPETS_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E tar cf "${CUSTOM_TRUMPETS_ZIP}" --format=zip -- .
         DEPENDS ${CUSTOM_TRUMPETS_FILES}
+        WORKING_DIRECTORY "${CUSTOM_TRUMPETS_DIR}"
         COMMENT "Packaging ${CUSTOM_TRUMPETS_DIR} -> ${CUSTOM_TRUMPETS_ZIP}"
         VERBATIM
+)
+
+file(TO_CMAKE_PATH "${CUSTOM_TRUMPETS_ZIP}" CUSTOM_TRUMPETS_ZIP_CMAKE)
+file(TO_CMAKE_PATH "${CMAKE_SOURCE_DIR}/trumpet/resources/resource_ids.h" RESOURCE_IDS_HEADER_CMAKE)
+configure_file(
+        "${CMAKE_SOURCE_DIR}/trumpet/resources/installer_assets.rc.in"
+        "${INSTALLER_ASSETS_RC}"
+        @ONLY
 )
 
 add_custom_command(
@@ -198,30 +210,17 @@ add_custom_command(
         VERBATIM
 )
 
-add_custom_command(
-        OUTPUT "${CUSTOM_TRUMPETS_HEADER}"
-        COMMAND ${CMAKE_COMMAND}
-        -DINPUT_FILE=${CUSTOM_TRUMPETS_ZIP}
-        -DOUTPUT_FILE=${CUSTOM_TRUMPETS_HEADER}
-        -DSYMBOL_NAME=CustomTrumpetsZip
-        -DFORCE_RECREATE_ALL=${TRUMPET_RECREATE_ALL_GENERATED}
-        -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
-        DEPENDS "${CUSTOM_TRUMPETS_ZIP}"
-        COMMENT "Embedding customTrumpets.zip -> CustomTrumpetsZip.h"
-        VERBATIM
-)
-
 set(TRUMPET_INSTALLER_ASSETS
         "${TRUMPET_EXE_HEADER}"
         "${UNINSTALLER_EXE_HEADER}"
         "${LICENSE_HEADER}"
         "${README_HEADER}"
-        "${CUSTOM_TRUMPETS_HEADER}"
+        "${CUSTOM_TRUMPETS_ZIP}"
 )
 
 add_custom_target(GenerateInstallerAssets DEPENDS ${TRUMPET_INSTALLER_ASSETS})
 
-add_executable(Installer ${INSTALLER_SOURCES})
+add_executable(Installer ${INSTALLER_SOURCES} "${INSTALLER_ASSETS_RC}")
 
 set_target_properties(Installer PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${TRUMPET_BUILD_DIR}"
@@ -283,31 +282,30 @@ add_test(NAME generated_trumpet_header_nonzero
         COMMAND ${CMAKE_COMMAND}
         -DHEADER_PATH=${TRUMPET_EXE_HEADER}
         -DSYMBOL_NAME=TrumpetExe
-        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
+        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbedLen.cmake)
 
 add_test(NAME generated_uninstaller_header_nonzero
         COMMAND ${CMAKE_COMMAND}
         -DHEADER_PATH=${UNINSTALLER_EXE_HEADER}
         -DSYMBOL_NAME=UninstallerExe
-        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
+        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbedLen.cmake)
 
 add_test(NAME generated_license_header_nonzero
         COMMAND ${CMAKE_COMMAND}
         -DHEADER_PATH=${LICENSE_HEADER}
         -DSYMBOL_NAME=LicenseTxt
-        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
+        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbedLen.cmake)
 
 add_test(NAME generated_readme_header_nonzero
         COMMAND ${CMAKE_COMMAND}
         -DHEADER_PATH=${README_HEADER}
         -DSYMBOL_NAME=ReadmeMd
-        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
+        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbedLen.cmake)
 
-add_test(NAME generated_custom_zip_header_nonzero
+add_test(NAME packaged_custom_zip_nonzero
         COMMAND ${CMAKE_COMMAND}
-        -DHEADER_PATH=${CUSTOM_TRUMPETS_HEADER}
-        -DSYMBOL_NAME=CustomTrumpetsZip
-        -P ${CMAKE_SOURCE_DIR}/cmake/AssertEmbeddedHeaderNonZero.cmake)
+        -DINPUT_FILE=${CUSTOM_TRUMPETS_ZIP}
+        -P ${CMAKE_SOURCE_DIR}/cmake/AssertFileNonZero.cmake)
 
 add_custom_target(autotest
         COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
