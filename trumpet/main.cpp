@@ -8,6 +8,7 @@
 #include <cwchar>
 #include <iostream>
 #include <random>
+#include <cmath>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "gdiplus.lib")
@@ -174,7 +175,7 @@ void UpdateOverlay() {
 }
 
 // Set trumpet with hotkey override option
-void SetTrumpet(int t, bool hotkeyOverride = false) {
+void SetTrumpet(int t, const bool hotkeyOverride = false) {
     const int prev = currentTrumpet;
     if (hotkeyOverride && t == prev) t = 0; // reset if same trumpet hotkey pressed
     currentTrumpet = t;
@@ -203,8 +204,9 @@ void SetTrumpet(int t, bool hotkeyOverride = false) {
     while (true) {
         if (currentTrumpet > 0) {
             auto now = clock::now();
-            const double sine = sin(
-                std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() * 0.005);
+            const double millis = static_cast<double>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
+            const double sine = sin(millis * 0.005);
             overlayAlpha = static_cast<BYTE>((sine * 0.5 + 0.5) * 255);
             UpdateOverlay();
         }
@@ -216,8 +218,7 @@ void SetTrumpet(int t, bool hotkeyOverride = false) {
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(decayInterval(rng)));
         if (decayChance(rng)) {
-            int val = readDangerLevelUser();
-            if (val > 0) writeDangerLevel(val - 1);
+            if (const int val = readDangerLevelUser(); val > 0) writeDangerLevel(val - 1);
         }
     }
 }
@@ -225,8 +226,7 @@ void SetTrumpet(int t, bool hotkeyOverride = false) {
 [[noreturn]] void AudioLoop() {
     int lastTrumpet = 0;
     while (true) {
-        const int trumpet = currentTrumpet.load();
-        if (trumpet != lastTrumpet) {
+        if (const int trumpet = currentTrumpet.load(); trumpet != lastTrumpet) {
             // Purge any previous loop before starting a new one.
             PlaySoundW(nullptr, nullptr, SND_PURGE);
             std::this_thread::sleep_for(10ms);
@@ -236,8 +236,7 @@ void SetTrumpet(int t, bool hotkeyOverride = false) {
                 if (path.empty() || !fileExists(path.c_str())) {
                     std::wcerr << L"[ERROR] Audio file missing/unreadable: " << path << std::endl;
                 } else {
-                    constexpr DWORD primaryFlags = SND_ASYNC | SND_FILENAME | SND_LOOP | SND_SYSTEM;
-                    if (!PlaySoundW(path.c_str(), nullptr, primaryFlags)) {
+                    if (constexpr DWORD primaryFlags = SND_ASYNC | SND_FILENAME | SND_LOOP | SND_SYSTEM; !PlaySoundW(path.c_str(), nullptr, primaryFlags)) {
                         const DWORD err = GetLastError();
                         std::wcerr << L"[ERROR] PlaySound primary failed (" << err << L"): " << path << std::endl;
 

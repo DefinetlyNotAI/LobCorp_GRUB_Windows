@@ -2,7 +2,9 @@
 #include <tlhelp32.h>
 #include <string>
 #include <shlobj.h>
-#include <iostream>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 void KillProcessByName(const std::wstring& processName) {
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -24,8 +26,9 @@ void KillProcessByName(const std::wstring& processName) {
 }
 
 bool DeleteFolder(const std::wstring& path) {
-    std::wstring cmd = L"rd /s /q \"" + path + L"\"";
-    return system(std::string(cmd.begin(), cmd.end()).c_str()) == 0;
+    std::error_code ec;
+    fs::remove_all(fs::path(path), ec);
+    return !ec;
 }
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {

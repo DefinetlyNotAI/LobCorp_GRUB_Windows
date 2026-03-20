@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 #include <iostream>
-#include <zip.h>
+#include <limits>
 
 namespace fs = std::filesystem;
 
@@ -14,33 +14,59 @@ namespace fs = std::filesystem;
 #include "UninstallerExe.h"
 #include "LicenseTxt.h"
 #include "ReadmeMd.h"
-#include "CustomTrumpetsZip.h" // Embed your .customTrumpets.zip as bytes
+#include "CustomTrumpetsZip.h"
 
 bool WriteFile(const fs::path& path, const unsigned char* data, const size_t len) {
     try {
+        if (len > static_cast<size_t>(std::numeric_limits<std::streamsize>::max())) return false;
         fs::create_directories(path.parent_path());
         std::ofstream out(path, std::ios::binary);
         if (!out) return false;
-        out.write(reinterpret_cast<const char*>(data), len);
+        out.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(len));
         return true;
     } catch (...) { return false; }
 }
 
-// Simple extraction of ZIP using minizip / libzip
+std::wstring EscapePsSingleQuoted(const std::wstring& value) {
+    std::wstring escaped;
+    escaped.reserve(value.size());
+    for (const wchar_t ch : value) {
+        if (ch == L'\'') {
+            escaped += L"''";
+        } else {
+            escaped += ch;
+        }
+    }
+    return escaped;
+}
+
 bool ExtractZip(const unsigned char* data, const size_t len, const fs::path& outDir) {
+    if (len > static_cast<size_t>(std::numeric_limits<std::streamsize>::max())) return false;
+
     // Write temp zip file
     const fs::path tempZip = fs::temp_directory_path() / "customTrumpets.zip";
     std::ofstream tmp(tempZip, std::ios::binary);
-    tmp.write(reinterpret_cast<const char*>(data), len);
+    if (!tmp) return false;
+    tmp.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(len));
+    if (!tmp.good()) return false;
     tmp.close();
 
-    // Use Windows Shell application to unzip (simpler than libzip if no extra deps)
-    std::wstring cmd = L"powershell -Command \"Expand-Archive -Force '" +
-                       tempZip.wstring() + L"' '" + outDir.wstring() + L"'\"";
-    system(std::string(cmd.begin(), cmd.end()).c_str());
+    const std::wstring zipArg = EscapePsSingleQuoted(tempZip.wstring());
+    const std::wstring outArg = EscapePsSingleQuoted(outDir.wstring());
+
+#ifdef TRUMPET_POWERSHELL_EXE
+    const std::wstring psExe = TRUMPET_POWERSHELL_EXE;
+#else
+    const std::wstring psExe = L"powershell.exe";
+#endif
+
+    const std::wstring cmd = L"\"" + psExe +
+                             L"\" -NoProfile -ExecutionPolicy Bypass -Command \"Expand-Archive -LiteralPath '" +
+                             zipArg + L"' -DestinationPath '" + outArg + L"' -Force\"";
+    const int exitCode = _wsystem(cmd.c_str());
 
     fs::remove(tempZip);
-    return true;
+    return exitCode == 0;
 }
 
 // Request admin rights via manifest: simpler if exe is built with requireAdministrator in manifest
@@ -91,7 +117,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
 
     // Extract .customTrumpets folder
-    fs::path userCustom = fs::path(getenv("USERPROFILE")) / ".customTrumpets";
+    wchar_t userProfile[MAX_PATH];
+    if (!GetEnvironmentVariableW(L"USERPROFILE", userProfile, MAX_PATH)) {
+        MessageBoxW(nullptr, L"Failed to resolve USERPROFILE", L"Installer", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+    fs::path userCustom = fs::path(userProfile) / ".customTrumpets";
     if (!ExtractZip(CustomTrumpetsZip, CustomTrumpetsZip_len, userCustom)) {
         MessageBoxW(nullptr, L"Failed to extract .customTrumpets", L"Installer", MB_OK | MB_ICONERROR);
         return 1;

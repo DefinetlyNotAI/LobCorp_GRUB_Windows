@@ -1,11 +1,20 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(TrumpetProject VERSION 1.0 LANGUAGES CXX)
+enable_testing()
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Build settings
+set(TRUMPET_BUILD_DIR "${CMAKE_SOURCE_DIR}/build")
+set(TRUMPET_EMBED_DIR "${TRUMPET_BUILD_DIR}/generated")
+file(MAKE_DIRECTORY "${TRUMPET_BUILD_DIR}")
+file(MAKE_DIRECTORY "${TRUMPET_EMBED_DIR}")
+
+option(TRUMPET_BUILD_ALL_DEFAULT "Build all targets in order by default (Trumpet -> Uninstaller -> Installer)" OFF)
 
 # ----------------------
 # Main Trumpet executable
@@ -19,9 +28,9 @@ add_executable(Trumpet ${TRUMPET_SOURCES})
 
 # Output directory for main exe
 set_target_properties(Trumpet PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build"
-        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}/build"
-        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/build"
+        RUNTIME_OUTPUT_DIRECTORY "${TRUMPET_BUILD_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${TRUMPET_BUILD_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${TRUMPET_BUILD_DIR}"
 )
 
 # Windows subsystem + Unicode for GNU
@@ -60,9 +69,9 @@ add_executable(TrumpetUninstaller ${UNINSTALLER_SOURCES})
 
 # Output directory for uninstaller exe
 set_target_properties(TrumpetUninstaller PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build"
-        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}/build"
-        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/build"
+        RUNTIME_OUTPUT_DIRECTORY "${TRUMPET_BUILD_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${TRUMPET_BUILD_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${TRUMPET_BUILD_DIR}"
 )
 
 # Windows subsystem + Unicode for GNU
@@ -85,3 +94,214 @@ elseif (MSVC)
             shell32
     )
 endif()
+
+# ----------------------
+# Installer executable
+# ----------------------
+set(INSTALLER_SOURCES
+        trumpet/installer.cpp
+)
+
+set(LICENSE_FILE "${CMAKE_SOURCE_DIR}/LICENSE")
+set(README_FILE "${CMAKE_SOURCE_DIR}/README.md")
+set(CUSTOM_TRUMPETS_DIR "${CMAKE_SOURCE_DIR}/trumpet/.customTrumpets")
+
+if (NOT EXISTS "${LICENSE_FILE}")
+    message(FATAL_ERROR "Required file not found: ${LICENSE_FILE}")
+endif()
+
+if (NOT EXISTS "${README_FILE}")
+    message(FATAL_ERROR "Required file not found: ${README_FILE}")
+endif()
+
+if (NOT EXISTS "${CUSTOM_TRUMPETS_DIR}")
+    message(FATAL_ERROR "Required folder not found: ${CUSTOM_TRUMPETS_DIR}")
+endif()
+
+find_program(TRUMPET_POWERSHELL_EXECUTABLE NAMES pwsh.exe powershell.exe)
+if (TRUMPET_POWERSHELL_EXECUTABLE)
+    message(STATUS "PowerShell detected: ${TRUMPET_POWERSHELL_EXECUTABLE}")
+else()
+    message(STATUS "PowerShell not found in PATH. Installer extraction may fail at runtime.")
+endif()
+
+set(TRUMPET_EXE_HEADER "${TRUMPET_EMBED_DIR}/TrumpetExe.h")
+set(UNINSTALLER_EXE_HEADER "${TRUMPET_EMBED_DIR}/UninstallerExe.h")
+set(LICENSE_HEADER "${TRUMPET_EMBED_DIR}/LicenseTxt.h")
+set(README_HEADER "${TRUMPET_EMBED_DIR}/ReadmeMd.h")
+set(CUSTOM_TRUMPETS_ZIP "${TRUMPET_EMBED_DIR}/customTrumpets.zip")
+set(CUSTOM_TRUMPETS_HEADER "${TRUMPET_EMBED_DIR}/CustomTrumpetsZip.h")
+
+function(trumpet_write_embed_stub header_path symbol_name)
+    if (NOT EXISTS "${header_path}")
+        file(WRITE "${header_path}"
+                "#pragma once\n#include <cstddef>\n\nconst unsigned char ${symbol_name}[] = { 0x00 };\nconst std::size_t ${symbol_name}_len = 0;\n")
+    endif()
+endfunction()
+
+# Keep IDE/indexing happy before first asset generation pass.
+trumpet_write_embed_stub("${TRUMPET_EXE_HEADER}" "TrumpetExe")
+trumpet_write_embed_stub("${UNINSTALLER_EXE_HEADER}" "UninstallerExe")
+trumpet_write_embed_stub("${LICENSE_HEADER}" "LicenseTxt")
+trumpet_write_embed_stub("${README_HEADER}" "ReadmeMd")
+trumpet_write_embed_stub("${CUSTOM_TRUMPETS_HEADER}" "CustomTrumpetsZip")
+
+# Track files inside the custom media folder so ZIP regeneration is accurate.
+file(GLOB_RECURSE CUSTOM_TRUMPETS_FILES CONFIGURE_DEPENDS "${CUSTOM_TRUMPETS_DIR}/*")
+
+add_custom_command(
+        OUTPUT "${CUSTOM_TRUMPETS_ZIP}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${TRUMPET_EMBED_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E tar cf "${CUSTOM_TRUMPETS_ZIP}" --format=zip -- "${CUSTOM_TRUMPETS_DIR}"
+        DEPENDS ${CUSTOM_TRUMPETS_FILES}
+        COMMENT "Packaging ${CUSTOM_TRUMPETS_DIR} -> ${CUSTOM_TRUMPETS_ZIP}"
+        VERBATIM
+)
+
+add_custom_command(
+        OUTPUT "${TRUMPET_EXE_HEADER}"
+        COMMAND ${CMAKE_COMMAND}
+        -DINPUT_FILE=$<TARGET_FILE:Trumpet>
+        -DOUTPUT_FILE=${TRUMPET_EXE_HEADER}
+        -DSYMBOL_NAME=TrumpetExe
+        -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
+        DEPENDS Trumpet
+        COMMENT "Embedding Trumpet.exe -> TrumpetExe.h"
+        VERBATIM
+)
+
+add_custom_command(
+        OUTPUT "${UNINSTALLER_EXE_HEADER}"
+        COMMAND ${CMAKE_COMMAND}
+        -DINPUT_FILE=$<TARGET_FILE:TrumpetUninstaller>
+        -DOUTPUT_FILE=${UNINSTALLER_EXE_HEADER}
+        -DSYMBOL_NAME=UninstallerExe
+        -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
+        DEPENDS TrumpetUninstaller
+        COMMENT "Embedding Uninstaller.exe -> UninstallerExe.h"
+        VERBATIM
+)
+
+add_custom_command(
+        OUTPUT "${LICENSE_HEADER}"
+        COMMAND ${CMAKE_COMMAND}
+        -DINPUT_FILE=${LICENSE_FILE}
+        -DOUTPUT_FILE=${LICENSE_HEADER}
+        -DSYMBOL_NAME=LicenseTxt
+        -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
+        DEPENDS "${LICENSE_FILE}"
+        COMMENT "Embedding LICENSE -> LicenseTxt.h"
+        VERBATIM
+)
+
+add_custom_command(
+        OUTPUT "${README_HEADER}"
+        COMMAND ${CMAKE_COMMAND}
+        -DINPUT_FILE=${README_FILE}
+        -DOUTPUT_FILE=${README_HEADER}
+        -DSYMBOL_NAME=ReadmeMd
+        -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
+        DEPENDS "${README_FILE}"
+        COMMENT "Embedding README.md -> ReadmeMd.h"
+        VERBATIM
+)
+
+add_custom_command(
+        OUTPUT "${CUSTOM_TRUMPETS_HEADER}"
+        COMMAND ${CMAKE_COMMAND}
+        -DINPUT_FILE=${CUSTOM_TRUMPETS_ZIP}
+        -DOUTPUT_FILE=${CUSTOM_TRUMPETS_HEADER}
+        -DSYMBOL_NAME=CustomTrumpetsZip
+        -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
+        DEPENDS "${CUSTOM_TRUMPETS_ZIP}"
+        COMMENT "Embedding customTrumpets.zip -> CustomTrumpetsZip.h"
+        VERBATIM
+)
+
+add_custom_target(GenerateInstallerAssets DEPENDS
+        "${TRUMPET_EXE_HEADER}"
+        "${UNINSTALLER_EXE_HEADER}"
+        "${LICENSE_HEADER}"
+        "${README_HEADER}"
+        "${CUSTOM_TRUMPETS_HEADER}"
+)
+
+add_executable(Installer ${INSTALLER_SOURCES})
+
+set_target_properties(Installer PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${TRUMPET_BUILD_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${TRUMPET_BUILD_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${TRUMPET_BUILD_DIR}"
+)
+
+target_include_directories(Installer PRIVATE "${TRUMPET_EMBED_DIR}")
+add_dependencies(Installer GenerateInstallerAssets)
+
+if (TRUMPET_POWERSHELL_EXECUTABLE)
+    file(TO_CMAKE_PATH "${TRUMPET_POWERSHELL_EXECUTABLE}" TRUMPET_POWERSHELL_EXECUTABLE_CMAKE)
+    target_compile_definitions(Installer PRIVATE TRUMPET_POWERSHELL_EXE=L"${TRUMPET_POWERSHELL_EXECUTABLE_CMAKE}")
+endif()
+
+# Windows subsystem + Unicode for GNU
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(Installer PRIVATE -municode -mwindows)
+    target_link_options(Installer PRIVATE -municode -mwindows)
+endif()
+
+# Link required libraries for installer
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_libraries(Installer PRIVATE
+            user32
+            shell32
+            advapi32
+    )
+elseif (MSVC)
+    target_link_libraries(Installer PRIVATE
+            user32
+            shell32
+            advapi32
+    )
+endif()
+
+# Ordered build pipeline: Trumpet -> Uninstaller -> Installer
+add_custom_target(build_all DEPENDS Installer)
+add_dependencies(GenerateInstallerAssets TrumpetUninstaller)
+add_dependencies(TrumpetUninstaller Trumpet)
+
+if (TRUMPET_BUILD_ALL_DEFAULT)
+    add_custom_target(build_all_default ALL DEPENDS build_all)
+endif()
+
+# ----------------------
+# Autotest (non-interactive smoke checks)
+# ----------------------
+add_test(NAME artifact_trumpet_exists
+        COMMAND ${CMAKE_COMMAND} -E md5sum $<TARGET_FILE:Trumpet>)
+
+add_test(NAME artifact_uninstaller_exists
+        COMMAND ${CMAKE_COMMAND} -E md5sum $<TARGET_FILE:TrumpetUninstaller>)
+
+add_test(NAME artifact_installer_exists
+        COMMAND ${CMAKE_COMMAND} -E md5sum $<TARGET_FILE:Installer>)
+
+add_test(NAME generated_trumpet_header_exists
+        COMMAND ${CMAKE_COMMAND} -E md5sum "${TRUMPET_EXE_HEADER}")
+
+add_test(NAME generated_uninstaller_header_exists
+        COMMAND ${CMAKE_COMMAND} -E md5sum "${UNINSTALLER_EXE_HEADER}")
+
+add_test(NAME generated_license_header_exists
+        COMMAND ${CMAKE_COMMAND} -E md5sum "${LICENSE_HEADER}")
+
+add_test(NAME generated_readme_header_exists
+        COMMAND ${CMAKE_COMMAND} -E md5sum "${README_HEADER}")
+
+add_test(NAME generated_custom_zip_header_exists
+        COMMAND ${CMAKE_COMMAND} -E md5sum "${CUSTOM_TRUMPETS_HEADER}")
+
+add_custom_target(autotest
+        COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+        DEPENDS build_all
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+)
+
