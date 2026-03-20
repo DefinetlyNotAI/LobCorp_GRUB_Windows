@@ -14,7 +14,9 @@ namespace fs = std::filesystem;
 #include "UninstallerExe.h"
 #include "LicenseTxt.h"
 #include "ReadmeMd.h"
+#ifdef TRUMPET_EMBED_CUSTOM_TRUMPETS
 #include "CustomTrumpetsZip.h"
+#endif
 
 bool WriteFile(const fs::path& path, const unsigned char* data, const size_t len) {
     try {
@@ -67,6 +69,32 @@ bool ExtractZip(const unsigned char* data, const size_t len, const fs::path& out
 
     fs::remove(tempZip);
     return exitCode == 0;
+}
+
+bool ExtractZipFromFile(const fs::path& zipPath, const fs::path& outDir) {
+    if (!fs::exists(zipPath) || !fs::is_regular_file(zipPath)) return false;
+
+    const std::wstring zipArg = EscapePsSingleQuoted(zipPath.wstring());
+    const std::wstring outArg = EscapePsSingleQuoted(outDir.wstring());
+
+#ifdef TRUMPET_POWERSHELL_EXE
+    const std::wstring psExe = TRUMPET_POWERSHELL_EXE;
+#else
+    const std::wstring psExe = L"powershell.exe";
+#endif
+
+    const std::wstring cmd = L"\"" + psExe +
+                             L"\" -NoProfile -ExecutionPolicy Bypass -Command \"Expand-Archive -LiteralPath '" +
+                             zipArg + L"' -DestinationPath '" + outArg + L"' -Force\"";
+    const int exitCode = _wsystem(cmd.c_str());
+    return exitCode == 0;
+}
+
+fs::path GetExecutableDir() {
+    wchar_t exePath[MAX_PATH];
+    const DWORD n = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return {};
+    return fs::path(exePath).parent_path();
 }
 
 // Request admin rights via manifest: simpler if exe is built with requireAdministrator in manifest
@@ -123,10 +151,21 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return 1;
     }
     fs::path userCustom = fs::path(userProfile) / ".customTrumpets";
+#ifdef TRUMPET_EMBED_CUSTOM_TRUMPETS
     if (!ExtractZip(CustomTrumpetsZip, CustomTrumpetsZip_len, userCustom)) {
         MessageBoxW(nullptr, L"Failed to extract .customTrumpets", L"Installer", MB_OK | MB_ICONERROR);
         return 1;
     }
+#else
+    const fs::path externalZip = GetExecutableDir() / "customTrumpets.zip";
+    if (!ExtractZipFromFile(externalZip, userCustom)) {
+        MessageBoxW(nullptr,
+                    L"Failed to extract .customTrumpets from external customTrumpets.zip",
+                    L"Installer",
+                    MB_OK | MB_ICONERROR);
+        return 1;
+    }
+#endif
     MessageBoxW(nullptr, L"Installation complete.", L"Installer", MB_OK | MB_ICONINFORMATION);
     return 0;
 }

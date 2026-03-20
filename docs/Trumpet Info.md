@@ -1,67 +1,80 @@
-# Trumpet
+# Trumpet Info
 
-Trumpet is a lightweight Windows overlay + looping audio app driven by a user-level `DANGER_LEVEL` value.
+Trumpet is a Windows overlay + audio alert app controlled by user-level `DANGER_LEVEL`.
 
-It is designed to run in the background, react to danger changes, and display/play one of three "trumpet tiers".
+## What it does
 
-> Main installer app: `scripts/installer.ps1`
+- Shows a transparent full-screen overlay image.
+- Plays looping tiered audio.
+- Maps `DANGER_LEVEL` to 3 trumpet tiers.
+- Supports runtime hotkeys (`F6`, `F7`, `F8`).
 
-## About
+Tier mapping:
 
-Trumpet has three core behaviors:
+- `0` => off
+- `20-49` => tier 1
+- `50-79` => tier 2
+- `80-100` => tier 3
 
-- **Visual overlay**: A transparent topmost window renders PNG overlays from `%USERPROFILE%\\.customTrumpets\\overlay`.
-- **Looping audio**: Tier-specific WAV files are looped asynchronously from `%USERPROFILE%\\.customTrumpets\\audio`.
-- **Danger integration**: `DANGER_LEVEL` (stored under `HKCU:\Environment`) controls which tier is active.
+## Required media
 
-### Tier mapping
+Trumpet reads media from `%USERPROFILE%\.customTrumpets`:
 
-- `0` -> no trumpet
-- `20-49` -> trumpet 1
-- `50-79` -> trumpet 2
-- `80-100` -> trumpet 3
+- `overlay\trumpet1.png`, `overlay\trumpet2.png`, `overlay\trumpet3.png`
+- `audio\trumpet1.wav`, `audio\trumpet2.wav`, `audio\trumpet3.wav`
 
-## Install (recommended)
+If any of these files is missing, `Trumpet.exe` exits at startup.
 
-Use the attached installer.exe
+## Build outputs
+
+- `build/Trumpet.exe`
+- `build/TrumpetUninstaller.exe`
+- `build/Installer.exe`
+
+Ordered all-at-once build target:
+
+- `build_all` (`Trumpet -> TrumpetUninstaller -> Installer`)
+
+## CMake presets
+
+This repository includes `CMakePresets.json` with MSYS2 presets using:
+
+- `C:/msys64/mingw64/bin/g++.exe`
+- build dirs under `cmake/`:
+  - `cmake/cmake-build-debug`
+  - `cmake/cmake-build-release`
+
+Recommended commands:
+
+```powershell
+cmake --preset msys2-release
+cmake --build --preset build-all-release
+cmake --build --preset autotest-release
+```
+
+## Custom media ZIP packaging mode
+
+`TRUMPET_EMBED_CUSTOM_TRUMPETS`:
+
+- `OFF` (default): uses external `customTrumpets.zip` next to `Installer.exe` (fast).
+- `ON`: embeds ZIP into `CustomTrumpetsZip.h` (can be very slow with large ZIP files).
 
 ## Runtime controls
 
-- `F6`: set trumpet 1 (`DANGER_LEVEL=49`)
-- `F7`: set trumpet 2 (`DANGER_LEVEL=79`)
-- `F8`: set trumpet 3 (`DANGER_LEVEL=100`)
+- `F6` => set tier 1 (`DANGER_LEVEL=49`)
+- `F7` => set tier 2 (`DANGER_LEVEL=79`)
+- `F8` => set tier 3 (`DANGER_LEVEL=100`)
+- pressing same hotkey again toggles off
 
-Pressing the same hotkey again toggles off (sets trumpet to `0`).
-
-You can also set `DANGER_LEVEL` directly via PowerShell:
+Set `DANGER_LEVEL` manually:
 
 ```powershell
-[Environment]::SetEnvironmentVariable("DANGER_LEVEL", "INPUT VALUE HERE", "User")
-
+[Environment]::SetEnvironmentVariable("DANGER_LEVEL", "79", "User")
 ```
-
-This means you can later integrate Trumpet with other scripts or tools by modifying `DANGER_LEVEL` as needed.
-
-## Notes
-
-- Trumpet expects these files to exist at runtime:
-  - `%USERPROFILE%\\.customTrumpets\\overlay\\trumpet1.png`
-  - `%USERPROFILE%\\.customTrumpets\\overlay\\trumpet2.png`
-  - `%USERPROFILE%\\.customTrumpets\\overlay\\trumpet3.png`
-  - `%USERPROFILE%\\.customTrumpets\\audio\\trumpet1.wav`
-  - `%USERPROFILE%\\.customTrumpets\\audio\\trumpet2.wav`
-  - `%USERPROFILE%\\.customTrumpets\\audio\\trumpet3.wav`
-- If any file is missing, the app exits early with an error.
 
 ## Uninstall
 
-If installed using `scripts/installer.ps1`, run:
+Run `TrumpetUninstaller.exe` or your generated uninstall workflow.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Program Files\Trumpet\uninstall-trumpet.ps1"
-```
-
-This removes installed files, `.customTrumpets`, and the startup entry.
-
-For implementation and build internals, see `docs/Trumpet.md`.
+For full implementation details, see `docs/Trumpet - In detail.md`.
 

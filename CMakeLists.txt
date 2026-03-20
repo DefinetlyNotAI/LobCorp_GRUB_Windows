@@ -15,6 +15,7 @@ file(MAKE_DIRECTORY "${TRUMPET_BUILD_DIR}")
 file(MAKE_DIRECTORY "${TRUMPET_EMBED_DIR}")
 
 option(TRUMPET_BUILD_ALL_DEFAULT "Build all targets in order by default (Trumpet -> Uninstaller -> Installer)" OFF)
+option(TRUMPET_EMBED_CUSTOM_TRUMPETS "Embed customTrumpets.zip into CustomTrumpetsZip.h (slow for large media packs)" OFF)
 
 # ----------------------
 # Main Trumpet executable
@@ -206,25 +207,35 @@ add_custom_command(
         VERBATIM
 )
 
-add_custom_command(
-        OUTPUT "${CUSTOM_TRUMPETS_HEADER}"
-        COMMAND ${CMAKE_COMMAND}
-        -DINPUT_FILE=${CUSTOM_TRUMPETS_ZIP}
-        -DOUTPUT_FILE=${CUSTOM_TRUMPETS_HEADER}
-        -DSYMBOL_NAME=CustomTrumpetsZip
-        -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
-        DEPENDS "${CUSTOM_TRUMPETS_ZIP}"
-        COMMENT "Embedding customTrumpets.zip -> CustomTrumpetsZip.h"
-        VERBATIM
-)
+if (TRUMPET_EMBED_CUSTOM_TRUMPETS)
+    add_custom_command(
+            OUTPUT "${CUSTOM_TRUMPETS_HEADER}"
+            COMMAND ${CMAKE_COMMAND}
+            -DINPUT_FILE=${CUSTOM_TRUMPETS_ZIP}
+            -DOUTPUT_FILE=${CUSTOM_TRUMPETS_HEADER}
+            -DSYMBOL_NAME=CustomTrumpetsZip
+            -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
+            DEPENDS "${CUSTOM_TRUMPETS_ZIP}"
+            COMMENT "Embedding customTrumpets.zip -> CustomTrumpetsZip.h"
+            VERBATIM
+    )
+else()
+    message(STATUS "TRUMPET_EMBED_CUSTOM_TRUMPETS=OFF: using external customTrumpets.zip next to Installer.exe")
+endif()
 
-add_custom_target(GenerateInstallerAssets DEPENDS
+set(TRUMPET_INSTALLER_ASSETS
         "${TRUMPET_EXE_HEADER}"
         "${UNINSTALLER_EXE_HEADER}"
         "${LICENSE_HEADER}"
         "${README_HEADER}"
-        "${CUSTOM_TRUMPETS_HEADER}"
+        "${CUSTOM_TRUMPETS_ZIP}"
 )
+
+if (TRUMPET_EMBED_CUSTOM_TRUMPETS)
+    list(APPEND TRUMPET_INSTALLER_ASSETS "${CUSTOM_TRUMPETS_HEADER}")
+endif()
+
+add_custom_target(GenerateInstallerAssets DEPENDS ${TRUMPET_INSTALLER_ASSETS})
 
 add_executable(Installer ${INSTALLER_SOURCES})
 
@@ -236,6 +247,16 @@ set_target_properties(Installer PROPERTIES
 
 target_include_directories(Installer PRIVATE "${TRUMPET_EMBED_DIR}")
 add_dependencies(Installer GenerateInstallerAssets)
+
+if (TRUMPET_EMBED_CUSTOM_TRUMPETS)
+    target_compile_definitions(Installer PRIVATE TRUMPET_EMBED_CUSTOM_TRUMPETS=1)
+endif()
+
+add_custom_command(TARGET Installer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CUSTOM_TRUMPETS_ZIP}" "$<TARGET_FILE_DIR:Installer>/customTrumpets.zip"
+        COMMENT "Copying customTrumpets.zip next to Installer.exe"
+        VERBATIM
+)
 
 if (TRUMPET_POWERSHELL_EXECUTABLE)
     file(TO_CMAKE_PATH "${TRUMPET_POWERSHELL_EXECUTABLE}" TRUMPET_POWERSHELL_EXECUTABLE_CMAKE)

@@ -7,8 +7,10 @@
 /CMakeCache.txt
 cmake_install.cmake
 Makefile
-cmake-build-debug/
+/cmake-build-debug/
+/cmake/cmake-build-debug/
 /cmake-build-release/
+/cmake/cmake-build-release/
 bin/
 obj/
 

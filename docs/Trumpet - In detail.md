@@ -1,203 +1,138 @@
-﻿# Trumpet - Detailed Guide
+﻿# Trumpet - In Detail
 
-This document explains how Trumpet works internally, how to build it, and how to install it safely.
-> Main installer app: `scripts/installer.ps1`
+This guide covers architecture, build pipeline, installer assets, and troubleshooting.
 
-## 1) Purpose and behavior
+## 1) What Trumpet does
 
-Trumpet is a native Windows background app that combines:
+`Trumpet.exe` is a Windows background app that:
 
-- a transparent fullscreen overlay (PNG)
-- looped system audio playback (WAV)
-- hotkey + registry-driven state changes based on `DANGER_LEVEL`
-  The executable entry point is `trumpet/main.cpp` (`wWinMain`).
+- draws a full-screen transparent PNG overlay,
+- loops tiered WAV audio,
+- reacts to user-level `DANGER_LEVEL` in `HKCU\Environment`,
+- supports hotkeys `F6`, `F7`, `F8`.
 
-It takes inspiration from `Lobotomy Corp` warning systems.
+Entry point: `trumpet/main.cpp` (`wWinMain`).
 
-## 2) Installer-first workflow
+## 2) Runtime behavior
 
-The expected user workflow is installer-first via `scripts/installer.ps1`.
+### Asset locations
 
-### What `scripts/installer.ps1` does
+At startup, `initPaths()` builds these paths under `%USERPROFILE%\.customTrumpets`:
 
-1. Creates `C:\Program Files\Trumpet` if missing.
-2. Downloads:
-    - `Trumpet.exe`
-    - `LICENSE`
-    - `README.md`
-3. Downloads `Trumpets.media.zip` and extracts into `%USERPROFILE%`.
-4. Optionally creates startup key:
-    - Path: `HKCU:\Software\Microsoft\Windows\CurrentVersion\Run`
-    - Name: `Trumpet`
-    - Value: `C:\Program Files\Trumpet\Trumpet.exe`
-5. Writes an uninstaller script to:
-    - `C:\Program Files\Trumpet\uninstall-trumpet.ps1`
+- `overlay\trumpet1.png`, `overlay\trumpet2.png`, `overlay\trumpet3.png`
+- `audio\trumpet1.wav`, `audio\trumpet2.wav`, `audio\trumpet3.wav`
 
-### Why installer-first matters
+If any required file is missing, startup aborts.
 
-`trumpet/main.cpp` hardcodes media lookup under `%USERPROFILE%\\.customTrumpets\\...`. The installer guarantees that
-folder structure and files exist.
+### Danger mapping
 
-## 3) Runtime data model
+- `0` => off
+- `20-49` => trumpet 1
+- `50-79` => trumpet 2
+- `80-100` => trumpet 3
 
-Trumpet uses three data inputs:
+### Control model
 
-- **Overlay assets** (`.png`)
-- **Audio assets** (`.wav`)
-- **Danger level** (`HKCU\\Environment\\DANGER_LEVEL` aka Environment variable `DANGER_LEVEL`)
+- `F6/F7/F8` set tier 1/2/3.
+- Pressing the same active hotkey toggles off.
+- Hotkey changes also write canonical values (`49`, `79`, `100`) to `DANGER_LEVEL`.
+- Auto-upgrade only: app escalates to higher tiers automatically, but only resets to off when danger hits `0`.
 
-### Asset paths
+## 3) Build targets
 
-At startup, `initPaths()` resolves `%USERPROFILE%` and builds:
+`CMakeLists.txt` defines:
 
-- `%USERPROFILE%\\.customTrumpets\\overlay\\trumpet1.png`
-- `%USERPROFILE%\\.customTrumpets\\overlay\\trumpet2.png`
-- `%USERPROFILE%\\.customTrumpets\\overlay\\trumpet3.png`
-- `%USERPROFILE%\\.customTrumpets\\audio\\trumpet1.wav`
-- `%USERPROFILE%\\.customTrumpets\\audio\\trumpet2.wav`
-- `%USERPROFILE%\\.customTrumpets\\audio\\trumpet3.wav`
-  If any of the six required files are missing, startup fails immediately.
+- `Trumpet` => `build/Trumpet.exe`
+- `TrumpetUninstaller` => `build/TrumpetUninstaller.exe`
+- `Installer` => `build/Installer.exe`
+- `GenerateInstallerAssets` => prepares generated headers + zip payload
+- `build_all` => ordered flow: `Trumpet -> TrumpetUninstaller -> Installer`
+- `autotest` => non-interactive smoke checks via CTest
 
-### Danger-level mapping
+## 4) Installer asset generation
 
-`trumpetFromDanger()` maps value to active tier:
+Installer depends on generated files in `build/generated`:
 
-- `0` -> `0` (off)
-- `20-49` -> `1`
-- `50-79` -> `2`
-- `80-100` -> `3`
-- values outside ranges → off
-  `readDangerLevelUser()` and `writeDangerLevel()` clamp values to `0-100`.
+- `TrumpetExe.h`
+- `UninstallerExe.h`
+- `LicenseTxt.h`
+- `ReadmeMd.h`
+- `customTrumpets.zip`
+- optional: `CustomTrumpetsZip.h`
 
-## 4) State transitions and controls
+### Important option for large media packs
 
-### Global hotkeys
+`TRUMPET_EMBED_CUSTOM_TRUMPETS` controls whether `customTrumpets.zip` is converted to `CustomTrumpetsZip.h`.
 
-In `wWinMain`, Trumpet registers:
+- `OFF` (default): fast build, zip copied next to `Installer.exe`, installer extracts from external `customTrumpets.zip`.
+- `ON`: zip is embedded into C++ header. This can be very slow for large zips.
 
-- `F6` -> trumpet 1
-- `F7` -> trumpet 2
-- `F8` -> trumpet 3
-  When a hotkey is pressed, `SetTrumpet(t, true)` is used:
-- pressing the same active hotkey toggles off
-- writes a canonical danger value:
-    - tier 1 -> `49`
-    - tier 2 -> `79`
-    - tier 3 -> `100`
+If your build appears "stuck" at:
 
-This over-rides any existing `DANGER_LEVEL` value, 
-but the main loop will still read and react to changes from other sources.
+`Embedding customTrumpets.zip -> CustomTrumpetsZip.h`
 
-This also over-rides the "sticky mode" behavior described below, since it sets the trumpet level directly.
+it is usually heavy processing for a large zip (not a deadlock). Use `TRUMPET_EMBED_CUSTOM_TRUMPETS=OFF` unless single-file installer embedding is required.
 
-### Sticky mode
+## 5) Build directories inside `cmake/`
 
-Main loop behavior (every ~200ms):
+Yes, this is supported and now documented through `CMakePresets.json`.
 
-- Trumpet auto-upgrades if danger enters a higher band.
-- Trumpet does **not** auto-downgrade between non-zero bands.
-- It resets to off only when danger reaches `0`.
+Presets use:
 
-## 5) Rendering and audio internals
+- `cmake/cmake-build-debug`
+- `cmake/cmake-build-release`
 
-### Overlay rendering (`UpdateOverlay`)
+Compiler path in presets is pinned to:
 
-- Uses a layered transparent window (`WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW`).
-- Draws through GDI+ into a 32-bit DIB section.
-- Scales image proportionally to fit screen and centers it.
-- Applies alpha via `UpdateLayeredWindow`.
+- `C:/msys64/mingw64/bin/g++.exe`
 
-### Overlay click-through
-
-`OverlayWndProc` returns `HTTRANSPARENT` on `WM_NCHITTEST`, so the window does not block mouse interaction.
-
-### Blink effect
-
-`BlinkLoop` updates alpha every ~16ms using a sine wave and calls `UpdateOverlay`.
-
-### Audio loop (`AudioLoop`)
-
-- Detects tier changes and purges old sound (`SND_PURGE`).
-- Plays wav in loop via `PlaySoundW` with:
-    - primary: `SND_ASYNC | SND_FILENAME | SND_LOOP | SND_SYSTEM`
-    - fallback: `SND_ASYNC | SND_FILENAME | SND_LOOP`
-- Logs failures to stderr and `OutputDebugStringW`.
-
-### Passive decay (`DecayLoop`)
-
-Every 1-5 seconds, with 50% chance, danger is decreased by 1 if above zero.
-
-## 6) Build and compile
-
-Build configuration lives in `CMakeLists.txt`.
-
-### Current build facts
-
-- Minimum CMake: `3.25`
-- Language: `C++20`
-- Target: `Trumpet`
-- Sources:
-    - `trumpet/main.cpp`
-    - `trumpet/resources/resources.rc`
-- Output executable path:
-    - `build/Trumpet.exe` (Debug and Release)
-      For GNU toolchains only (`CMAKE_CXX_COMPILER_ID STREQUAL "GNU"`):
-- compile options: `-municode -mwindows`
-- link options: `-municode -mwindows`
-- explicit libs: `gdiplus winmm user32 gdi32 ole32`
-
-### Build commands (PowerShell)
+## 6) Recommended commands
 
 From repository root:
 
-First time only (Init Release build):
 ```powershell
-cmake -S . -B cmake-build-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake --preset msys2-release
+cmake --build --preset build-all-release
+cmake --build --preset autotest-release
 ```
 
-> Do double-check you see a build/ folder!
-
-Compile command (after initial config):
-```powershell
-cmake --build cmake-build-release --target Trumpet -- -j 18
-```
-
-Then run (after putting `trumpet/.customTrumpets` in place `%USERPROFILE%`):
+Debug configure/build:
 
 ```powershell
-.\build\Trumpet.exe
+cmake --preset msys2-debug
+cmake --build --preset build-debug
 ```
 
-You can also create the uninstaller THEN installer scripts:
+If you explicitly want embedded zip mode:
 
 ```powershell
-cmake --build cmake-build-release --target TrumpetUninstaller -- -j 18
-cmake --build cmake-build-release --target Installer -- -j 18
+cmake --preset msys2-release -DTRUMPET_EMBED_CUSTOM_TRUMPETS=ON
+cmake --build --preset build-all-release
 ```
 
-## 7) Operational checklist
+## 7) Installer behavior
 
-Before running `Trumpet.exe`, confirm:
+`trumpet/installer.cpp` now supports two extraction modes:
 
-1. `.customTrumpets` exists in `%USERPROFILE%` with both `overlay` and `audio` subfolders.
-2. All 3 PNG and 3 WAV files are present and readable.
-3. `DANGER_LEVEL` under `HKCU:\Environment` is numeric (or unset).
-4. If startup is desired, installer-created Run key is present.
+- embedded mode (`TRUMPET_EMBED_CUSTOM_TRUMPETS=ON`): extract from `CustomTrumpetsZip.h` bytes,
+- external mode (default): extract from `customTrumpets.zip` next to `Installer.exe`.
+
+The build copies `customTrumpets.zip` next to `Installer.exe` automatically.
 
 ## 8) Troubleshooting
 
-- **Startup exits immediately**: one or more required media files are missing.
-- **No sound**: verify WAV files and check if `PlaySoundW` errors are printed.
-- **No overlay**: verify PNG files and that GDI+ loaded the selected image.
-- **Hotkeys do nothing**: another app may already own `F6/F7/F8`.
-- **Unexpected tier behavior**: sticky mode only auto-resets at danger `0`.
+- **Error 130 / `Interrupt` during embed**: build was interrupted (`Ctrl+C`) while generating large header output.
+- **Slow build at 54% embed step**: disable embedded zip mode (`TRUMPET_EMBED_CUSTOM_TRUMPETS=OFF`).
+- **Installer extraction fails**: check PowerShell availability (`pwsh.exe` or `powershell.exe`) and verify `customTrumpets.zip` exists beside `Installer.exe`.
+- **Trumpet exits at startup**: missing files under `%USERPROFILE%\.customTrumpets`.
+- **No overlay or audio**: verify PNG/WAV names and paths exactly match expected names.
 
 ## 9) Uninstall
 
-Preferred uninstall (installer-generated script):
+Use `TrumpetUninstaller.exe` or your installer-generated uninstall workflow.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Program Files\Trumpet\uninstall-trumpet.ps1"
-```
+The uninstaller removes:
 
-This removes program files, `%USERPROFILE%\\.customTrumpets`, and startup registration.
+- `C:\Program Files\Trumpet`
+- `%USERPROFILE%\.customTrumpets`
+- startup and uninstall registry keys for current user.

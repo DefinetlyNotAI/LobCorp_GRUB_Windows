@@ -1,0 +1,66 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "msys2-debug",
+      "displayName": "MSYS2 Debug",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/cmake/cmake-build-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "C:/msys64/mingw64/bin/g++.exe",
+        "TRUMPET_EMBED_CUSTOM_TRUMPETS": "OFF"
+      }
+    },
+    {
+      "name": "msys2-release",
+      "displayName": "MSYS2 Release",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/cmake/cmake-build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "C:/msys64/mingw64/bin/g++.exe",
+        "TRUMPET_EMBED_CUSTOM_TRUMPETS": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build-debug",
+      "configurePreset": "msys2-debug"
+    },
+    {
+      "name": "build-release",
+      "configurePreset": "msys2-release"
+    },
+    {
+      "name": "build-all-release",
+      "configurePreset": "msys2-release",
+      "targets": [
+        "build_all"
+      ]
+    },
+    {
+      "name": "autotest-release",
+      "configurePreset": "msys2-release",
+      "targets": [
+        "autotest"
+      ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "test-release",
+      "configurePreset": "msys2-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
+
