@@ -7,57 +7,52 @@
   },
   "configurePresets": [
     {
-      "name": "msys2-debug",
-      "displayName": "MSYS2 Debug",
-      "generator": "MinGW Makefiles",
-      "binaryDir": "${sourceDir}/cmake/debug",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "C:/msys64/mingw64/bin/g++.exe"
-      }
-    },
-    {
-      "name": "msys2-release",
-      "displayName": "MSYS2 Release",
+      "name": "base-release",
       "generator": "MinGW Makefiles",
       "binaryDir": "${sourceDir}/cmake/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
+        "TRUMPET_RECREATE_ALL_GENERATED": "OFF",
         "CMAKE_CXX_COMPILER": "C:/msys64/mingw64/bin/g++.exe"
+      }
+    },
+    {
+      "name": "base-release-fresh",
+      "inherits": "base-release",
+      "cacheVariables": {
+        "TRUMPET_RECREATE_ALL_GENERATED": "ON"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "build-debug",
-      "configurePreset": "msys2-debug"
-    },
-    {
-      "name": "build-release",
-      "configurePreset": "msys2-release"
-    },
-    {
-      "name": "build-all-release",
-      "configurePreset": "msys2-release",
+      "name": "trumpet-build-only",
+      "configurePreset": "base-release",
       "targets": [
-        "build_all"
+        "trumpet-build-only"
       ]
     },
     {
-      "name": "autotest-release",
-      "configurePreset": "msys2-release",
+      "name": "build",
+      "configurePreset": "base-release",
       "targets": [
-        "autotest"
+        "build"
       ]
-    }
-  ],
-  "testPresets": [
+    },
     {
-      "name": "test-release",
-      "configurePreset": "msys2-release",
-      "output": {
-        "outputOnFailure": true
-      }
+      "name": "build-fresh",
+      "configurePreset": "base-release-fresh",
+      "cleanFirst": true,
+      "targets": [
+        "build"
+      ]
+    },
+    {
+      "name": "test",
+      "configurePreset": "base-release",
+      "targets": [
+        "basic_test"
+      ]
     }
   ]
 }

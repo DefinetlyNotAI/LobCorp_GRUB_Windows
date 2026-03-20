@@ -11,8 +11,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Build settings
 set(TRUMPET_BUILD_DIR "${CMAKE_SOURCE_DIR}/build")
 set(TRUMPET_EMBED_DIR "${CMAKE_SOURCE_DIR}/trumpet/generated")
+set(TRUMPET_ZIP_DIR "${CMAKE_SOURCE_DIR}/cmake/zip")
 file(MAKE_DIRECTORY "${TRUMPET_BUILD_DIR}")
 file(MAKE_DIRECTORY "${TRUMPET_EMBED_DIR}")
+file(MAKE_DIRECTORY "${TRUMPET_ZIP_DIR}")
 file(REMOVE "${TRUMPET_EMBED_DIR}/customTrumpets.zip")
 file(REMOVE "${TRUMPET_EMBED_DIR}/CustomTrumpetsZip.h")
 
@@ -134,7 +136,7 @@ set(TRUMPET_EXE_HEADER "${TRUMPET_EMBED_DIR}/TrumpetExe.h")
 set(UNINSTALLER_EXE_HEADER "${TRUMPET_EMBED_DIR}/UninstallerExe.h")
 set(LICENSE_HEADER "${TRUMPET_EMBED_DIR}/LicenseTxt.h")
 set(README_HEADER "${TRUMPET_EMBED_DIR}/ReadmeMd.h")
-set(CUSTOM_TRUMPETS_ZIP "${CMAKE_BINARY_DIR}/customTrumpets.zip")
+set(CUSTOM_TRUMPETS_ZIP "${TRUMPET_ZIP_DIR}/customTrumpets.zip")
 set(INSTALLER_ASSETS_RC "${CMAKE_BINARY_DIR}/installer_assets.rc")
 
 # Track files inside the custom media folder so ZIP regeneration is accurate.
@@ -142,7 +144,7 @@ file(GLOB_RECURSE CUSTOM_TRUMPETS_FILES CONFIGURE_DEPENDS "${CUSTOM_TRUMPETS_DIR
 
 add_custom_command(
         OUTPUT "${CUSTOM_TRUMPETS_ZIP}"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${TRUMPET_ZIP_DIR}"
         COMMAND ${CMAKE_COMMAND} -E tar cf "${CUSTOM_TRUMPETS_ZIP}" --format=zip -- .
         DEPENDS ${CUSTOM_TRUMPETS_FILES}
         WORKING_DIRECTORY "${CUSTOM_TRUMPETS_DIR}"
@@ -258,12 +260,13 @@ elseif (MSVC)
 endif()
 
 # Ordered build pipeline: Trumpet -> Uninstaller -> Installer
-add_custom_target(build_all DEPENDS Installer)
+add_custom_target(trumpet-build-only DEPENDS Trumpet)
+add_custom_target(build DEPENDS Installer)
 add_dependencies(GenerateInstallerAssets TrumpetUninstaller)
 add_dependencies(TrumpetUninstaller Trumpet)
 
 if (TRUMPET_BUILD_ALL_DEFAULT)
-    add_custom_target(build_all_default ALL DEPENDS build_all)
+    add_custom_target(build_all_default ALL DEPENDS build)
 endif()
 
 # ----------------------
@@ -307,9 +310,10 @@ add_test(NAME packaged_custom_zip_nonzero
         -DINPUT_FILE=${CUSTOM_TRUMPETS_ZIP}
         -P ${CMAKE_SOURCE_DIR}/cmake/AssertFileNonZero.cmake)
 
-add_custom_target(autotest
-        COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-        DEPENDS build_all
+add_custom_target(basic_test
+        COMMAND ${CMAKE_CTEST_COMMAND} -R "artifact_" --output-on-failure
+        COMMAND ${CMAKE_CTEST_COMMAND} -R "packaged_custom_zip_nonzero" --output-on-failure
+        DEPENDS build
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
 

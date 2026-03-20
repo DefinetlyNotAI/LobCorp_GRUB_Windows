@@ -51,22 +51,51 @@ bool ExtractZip(const unsigned char* data, const size_t len, const fs::path& out
     if (!tmp.good()) return false;
     tmp.close();
 
+    std::error_code dirEc;
+    fs::create_directories(outDir, dirEc);
+    if (dirEc) {
+        fs::remove(tempZip);
+        return false;
+    }
+
     const std::wstring zipArg = EscapePsSingleQuoted(tempZip.wstring());
     const std::wstring outArg = EscapePsSingleQuoted(outDir.wstring());
 
-#ifdef TRUMPET_POWERSHELL_EXE
-    const std::wstring psExe = TRUMPET_POWERSHELL_EXE;
-#else
-    const std::wstring psExe = L"powershell.exe";
-#endif
+    auto runExtractWithPs = [&](const std::wstring& psExe) -> bool {
+        std::wstring script =
+                L"try { Expand-Archive -LiteralPath '" + zipArg + L"' -DestinationPath '" + outArg +
+                L"' -Force; exit 0 } catch { exit 1 }";
+        std::wstring args = L" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"" + script + L"\"";
 
-    const std::wstring cmd = L"\"" + psExe +
-                             L"\" -NoProfile -ExecutionPolicy Bypass -Command \"Expand-Archive -LiteralPath '" +
-                             zipArg + L"' -DestinationPath '" + outArg + L"' -Force\"";
-    const int exitCode = _wsystem(cmd.c_str());
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi{};
+
+        std::vector<wchar_t> cmdLine(args.begin(), args.end());
+        cmdLine.push_back(L'\0');
+
+        if (!CreateProcessW(psExe.c_str(), cmdLine.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            return false;
+        }
+
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        DWORD exitCode = 1;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        return exitCode == 0;
+    };
+
+    bool extracted = false;
+
+#ifdef TRUMPET_POWERSHELL_EXE
+    extracted = runExtractWithPs(TRUMPET_POWERSHELL_EXE);
+#endif
+    if (!extracted) extracted = runExtractWithPs(L"powershell.exe");
+    if (!extracted) extracted = runExtractWithPs(L"pwsh.exe");
 
     fs::remove(tempZip);
-    return exitCode == 0;
+    return extracted;
 }
 
 bool LoadCustomTrumpetsZip(std::vector<unsigned char>& outData) {
