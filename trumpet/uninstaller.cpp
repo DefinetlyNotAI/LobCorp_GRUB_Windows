@@ -6,6 +6,18 @@
 
 namespace fs = std::filesystem;
 
+bool IsAdmin() {
+    BOOL fAdmin = FALSE;
+    PSID pAdminGroup = nullptr;
+    SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
+    if (AllocateAndInitializeSid(&NtAuthority, 2, SECURITY_BUILTIN_DOMAIN_RID,
+                                 DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &pAdminGroup)) {
+        CheckTokenMembership(nullptr, pAdminGroup, &fAdmin);
+        FreeSid(pAdminGroup);
+    }
+    return fAdmin != FALSE;
+}
+
 void KillProcessByName(const std::wstring& processName) {
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnapshot == INVALID_HANDLE_VALUE) return;
@@ -32,6 +44,11 @@ bool DeleteFolder(const std::wstring& path) {
 }
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    if (!IsAdmin()) {
+        MessageBoxW(nullptr, L"Please run as administrator.", L"Uninstaller", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
     try {
         // Kill running Trumpet.exe
         KillProcessByName(L"Trumpet.exe");

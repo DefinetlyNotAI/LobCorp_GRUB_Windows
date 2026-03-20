@@ -62,7 +62,7 @@ bool ExtractZip(const unsigned char* data, const size_t len, const fs::path& out
     const std::wstring outArg = EscapePsSingleQuoted(outDir.wstring());
 
     auto runExtractWithPs = [&](const std::wstring& psExe) -> bool {
-        std::wstring script =
+        const std::wstring script =
                 L"try { Expand-Archive -LiteralPath '" + zipArg + L"' -DestinationPath '" + outArg +
                 L"' -Force; exit 0 } catch { exit 1 }";
         std::wstring args = L" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"" + script + L"\"";
@@ -71,7 +71,7 @@ bool ExtractZip(const unsigned char* data, const size_t len, const fs::path& out
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
 
-        std::vector<wchar_t> cmdLine(args.begin(), args.end());
+        std::vector cmdLine(args.begin(), args.end());
         cmdLine.push_back(L'\0');
 
         if (!CreateProcessW(psExe.c_str(), cmdLine.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
@@ -116,6 +116,55 @@ bool LoadCustomTrumpetsZip(std::vector<unsigned char>& outData) {
     return true;
 }
 
+bool ConfigureStartupRunEntry(const std::wstring& exePath, const bool enable) {
+    HKEY hKey = nullptr;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER,
+                        L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                        0,
+                        nullptr,
+                        REG_OPTION_NON_VOLATILE,
+                        KEY_SET_VALUE,
+                        nullptr,
+                        &hKey,
+                        nullptr) != ERROR_SUCCESS) {
+        return false;
+    }
+
+    bool ok;
+    if (enable) {
+        const std::wstring quotedPath = L"\"" + exePath + L"\"";
+        const auto* valueBytes = reinterpret_cast<const BYTE*>(quotedPath.c_str());
+        const auto valueSize = static_cast<DWORD>((quotedPath.size() + 1) * sizeof(wchar_t));
+        ok = RegSetValueExW(hKey, L"Trumpet", 0, REG_SZ, valueBytes, valueSize) == ERROR_SUCCESS;
+    } else {
+        const LONG removeResult = RegDeleteValueW(hKey, L"Trumpet");
+        ok = removeResult == ERROR_SUCCESS || removeResult == ERROR_FILE_NOT_FOUND;
+    }
+
+    RegCloseKey(hKey);
+    return ok;
+}
+
+bool LaunchAndVerifyTrumpet(const std::wstring& exePath) {
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+
+    if (!CreateProcessW(exePath.c_str(), nullptr, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+        return false;
+    }
+
+    Sleep(2000);
+
+    DWORD exitCode = 0;
+    const bool gotExitCode = GetExitCodeProcess(pi.hProcess, &exitCode) != FALSE;
+    const bool stillRunning = gotExitCode && exitCode == STILL_ACTIVE;
+
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return stillRunning;
+}
+
 
 // Request admin rights via manifest: simpler if exe is built with requireAdministrator in manifest
 bool IsAdmin() {
@@ -137,6 +186,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         MessageBoxW(nullptr, L"Please run as administrator.", L"Installer", MB_OK | MB_ICONERROR);
         return 1;
     }
+
+    const int startupChoice = MessageBoxW(
+            nullptr,
+            L"Do you want Trumpet to start automatically when you log in?",
+            L"Installer",
+            MB_YESNO | MB_ICONQUESTION
+    );
+    const bool addToStartup = (startupChoice == IDYES);
 
     // Program files path
     WCHAR programDir[MAX_PATH];
@@ -181,6 +238,18 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         MessageBoxW(nullptr, L"Failed to extract .customTrumpets", L"Installer", MB_OK | MB_ICONERROR);
         return 1;
     }
+
+    const std::wstring trumpetExePath = (targetDir / "Trumpet.exe").wstring();
+    if (!ConfigureStartupRunEntry(trumpetExePath, addToStartup)) {
+        MessageBoxW(nullptr, L"Failed to update startup setting.", L"Installer", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
+    if (!LaunchAndVerifyTrumpet(trumpetExePath)) {
+        MessageBoxW(nullptr, L"An error occurred while launching Trumpet.", L"Installer", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
     MessageBoxW(nullptr, L"Installation complete.", L"Installer", MB_OK | MB_ICONINFORMATION);
     return 0;
 }
