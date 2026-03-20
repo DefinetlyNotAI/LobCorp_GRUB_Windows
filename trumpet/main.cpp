@@ -176,8 +176,7 @@ void UpdateOverlay() {
 
 // Set trumpet with hotkey override option
 void SetTrumpet(int t, const bool hotkeyOverride = false) {
-    const int prev = currentTrumpet;
-    if (hotkeyOverride && t == prev) t = 0; // reset if same trumpet hotkey pressed
+    if (const int prev = currentTrumpet; hotkeyOverride && t == prev) t = 0; // reset if same trumpet hotkey pressed
     currentTrumpet = t;
 
     if (hotkeyOverride) {

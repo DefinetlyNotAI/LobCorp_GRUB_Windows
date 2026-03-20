@@ -243,7 +243,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         MessageBoxW(nullptr, L"Failed to get Program Files path.", L"Installer", MB_OK | MB_ICONERROR);
         return 1;
     }
-    fs::path targetDir = fs::path(programDir) / "Trumpet";
+    const fs::path targetDir = fs::path(programDir) / "Trumpet";
 
     // Write embedded files
     if (!WriteFile(targetDir / "Trumpet.exe", TrumpetExe, TrumpetExe_len)) {
